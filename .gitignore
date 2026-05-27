@@ -26,7 +26,6 @@ go.work.sum
 
 # Build output
 /build/
-/cover.out
 /coverage.html
 
 # Local smoke-test credentials (example file is committed; real config is not).
