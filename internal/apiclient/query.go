@@ -12,9 +12,12 @@ import (
 )
 
 // Query builds an ordered query string. nil values, empty strings, and
-// zero int64 values are silently skipped — matching the Java client's
-// QueryParams.add behaviour — so callers can pass optional parameters
-// uniformly without nil-checking.
+// numeric zero values (int64, float64) are silently skipped — matching
+// the Java client's QueryParams.add behaviour — so callers can pass
+// optional parameters uniformly without nil-checking. Booleans are
+// always emitted as "true"/"false". time.Time is emitted as RFC 3339
+// (with sub-second precision when present) in UTC; a zero time is
+// skipped. Unsupported value types cause Add to panic.
 //
 // Pass a pointer (*int64, *float64, *string) to force-include an
 // otherwise-skippable zero value.
@@ -73,11 +76,6 @@ func encodeValue(value any) (string, bool) {
 			return "", false
 		}
 		return *v, true
-	case int:
-		if v == 0 {
-			return "", false
-		}
-		return strconv.Itoa(v), true
 	case int64:
 		if v == 0 {
 			return "", false
@@ -104,8 +102,8 @@ func encodeValue(value any) (string, bool) {
 		if v.IsZero() {
 			return "", false
 		}
-		return v.UTC().Format(time.RFC3339), true
+		return v.UTC().Format(time.RFC3339Nano), true
 	default:
-		return fmt.Sprintf("%v", v), true
+		panic(fmt.Sprintf("apiclient.Query.Add: unsupported value type %T", v))
 	}
 }

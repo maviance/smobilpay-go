@@ -65,3 +65,64 @@ func TestQuery_urlEncodesValues(t *testing.T) {
 		t.Errorf("Encode() = %q", got)
 	}
 }
+
+func TestQuery_pointerString_nilSkipped_nonNilKept(t *testing.T) {
+	var nilPtr *string
+	kept := ""
+	q := NewQuery().Add("nil", nilPtr).Add("empty-ptr", &kept).Add("v", "x")
+	got := q.Encode()
+	// nil pointer skipped; *string("") forced via pointer.
+	if got != "empty-ptr=&v=x" {
+		t.Errorf("Encode() = %q", got)
+	}
+}
+
+func TestQuery_int64PointerNilSkipped(t *testing.T) {
+	var nilPtr *int64
+	q := NewQuery().Add("nil", nilPtr).Add("kept", int64(5))
+	if got := q.Encode(); got != "kept=5" {
+		t.Errorf("Encode() = %q", got)
+	}
+}
+
+func TestQuery_float64_skipZeroIncludeNonZero(t *testing.T) {
+	q := NewQuery().Add("z", 0.0).Add("n", 3.14)
+	if got := q.Encode(); got != "n=3.14" {
+		t.Errorf("Encode() = %q", got)
+	}
+}
+
+func TestQuery_float64PointerForceIncludesZero(t *testing.T) {
+	zero := 0.0
+	var nilPtr *float64
+	q := NewQuery().Add("nil", nilPtr).Add("z", &zero)
+	if got := q.Encode(); got != "z=0" {
+		t.Errorf("Encode() = %q", got)
+	}
+}
+
+func TestQuery_boolAlwaysIncluded(t *testing.T) {
+	q := NewQuery().Add("t", true).Add("f", false)
+	if got := q.Encode(); got != "t=true&f=false" {
+		t.Errorf("Encode() = %q", got)
+	}
+}
+
+func TestQuery_timeZeroSkipped(t *testing.T) {
+	var zero time.Time
+	q := NewQuery().Add("ts", zero).Add("k", "v")
+	if got := q.Encode(); got != "k=v" {
+		t.Errorf("Encode() = %q", got)
+	}
+}
+
+func TestQuery_unsupportedTypePanics(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic on unsupported value type")
+		}
+	}()
+	q := NewQuery()
+	q.Add("dur", time.Second) // time.Duration is not in the type switch
+}
