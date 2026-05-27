@@ -149,9 +149,3 @@ func (m *MasterdataAPI) Cashouts(ctx context.Context, serviceID int64) ([]Cashou
 		apiclient.NewQuery().Add("serviceid", serviceID), &out)
 	return out, err
 }
-
-// Bill and Subscription are declared here as zero-value placeholders so
-// they exist for compile-time PaymentItem interface assertions; the
-// real fields and methods land in initiate.go (Task 13).
-type Bill struct{ paymentItemBase }
-type Subscription struct{ paymentItemBase }
