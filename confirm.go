@@ -3,13 +3,22 @@ package smobilpay
 import (
 	"context"
 	"fmt"
+	"net/mail"
+	"regexp"
 	"time"
 )
 
-// CollectionRequest is the body for POST /v2/collectstd. QuoteID,
-// CustomerPhoneNumber, and CustomerEmailAddress are required; all other
-// fields are required only when the chosen Service sets the
-// corresponding IsReq* flag. Tag <= 50 chars, CallbackURL <= 255 chars.
+var phoneDigitsOnly = regexp.MustCompile(`^[0-9]+$`)
+
+// CollectionRequest is the body for POST /v2/collectstd.
+//
+// QuoteID (from a prior Initiate.Quote call; UUID format),
+// CustomerPhoneNumber (digits only, no leading +, E.164 numeric form
+// e.g. "237699999999"), and CustomerEmailAddress (valid email per
+// RFC 5322) are required. All other fields are required only when
+// the chosen Service sets the corresponding IsReq* flag.
+//
+// Tag <= 50 chars, CallbackURL <= 255 chars.
 type CollectionRequest struct {
 	QuoteID              string `json:"quoteId"`
 	CustomerPhoneNumber  string `json:"customerPhonenumber"`
@@ -31,8 +40,14 @@ func (r CollectionRequest) validate() error {
 	if r.CustomerPhoneNumber == "" {
 		return fmt.Errorf("smobilpay: CollectionRequest: customerPhonenumber is required")
 	}
+	if !phoneDigitsOnly.MatchString(r.CustomerPhoneNumber) {
+		return fmt.Errorf("smobilpay: CollectionRequest: customerPhonenumber must contain digits only (got %q)", r.CustomerPhoneNumber)
+	}
 	if r.CustomerEmailAddress == "" {
 		return fmt.Errorf("smobilpay: CollectionRequest: customerEmailaddress is required")
+	}
+	if _, err := mail.ParseAddress(r.CustomerEmailAddress); err != nil {
+		return fmt.Errorf("smobilpay: CollectionRequest: customerEmailaddress is not a valid email address: %w", err)
 	}
 	if len(r.Tag) > 50 {
 		return fmt.Errorf("smobilpay: CollectionRequest: tag must be <= 50 chars (got %d)", len(r.Tag))

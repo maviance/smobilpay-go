@@ -15,20 +15,35 @@ func TestCollectionRequest_validation(t *testing.T) {
 		req  CollectionRequest
 		want string
 	}{
-		{"missing quoteId", CollectionRequest{CustomerPhoneNumber: "p", CustomerEmailAddress: "e"}, "quoteId"},
-		{"missing phone", CollectionRequest{QuoteID: "q", CustomerEmailAddress: "e"}, "customerPhonenumber"},
-		{"missing email", CollectionRequest{QuoteID: "q", CustomerPhoneNumber: "p"}, "customerEmailaddress"},
+		{"missing quoteId", CollectionRequest{CustomerPhoneNumber: "237699999999", CustomerEmailAddress: "c@example.com"}, "quoteId"},
+		{"missing phone", CollectionRequest{QuoteID: "q", CustomerEmailAddress: "c@example.com"}, "customerPhonenumber"},
+		{"missing email", CollectionRequest{QuoteID: "q", CustomerPhoneNumber: "237699999999"}, "customerEmailaddress"},
 		{
 			"tag too long",
-			CollectionRequest{QuoteID: "q", CustomerPhoneNumber: "p", CustomerEmailAddress: "e",
+			CollectionRequest{QuoteID: "q", CustomerPhoneNumber: "237699999999", CustomerEmailAddress: "c@example.com",
 				Tag: strings.Repeat("x", 51)},
 			"tag",
 		},
 		{
 			"callback too long",
-			CollectionRequest{QuoteID: "q", CustomerPhoneNumber: "p", CustomerEmailAddress: "e",
+			CollectionRequest{QuoteID: "q", CustomerPhoneNumber: "237699999999", CustomerEmailAddress: "c@example.com",
 				CallbackURL: "https://" + strings.Repeat("x", 248)},
 			"callbackUrl",
+		},
+		{
+			"phone has plus sign",
+			CollectionRequest{QuoteID: "q", CustomerPhoneNumber: "+237699999999", CustomerEmailAddress: "c@example.com"},
+			"customerPhonenumber",
+		},
+		{
+			"phone has separators",
+			CollectionRequest{QuoteID: "q", CustomerPhoneNumber: "237-699-999-999", CustomerEmailAddress: "c@example.com"},
+			"customerPhonenumber",
+		},
+		{
+			"email no @",
+			CollectionRequest{QuoteID: "q", CustomerPhoneNumber: "237699", CustomerEmailAddress: "notanemail"},
+			"customerEmailaddress",
 		},
 	}
 	cfg, _ := NewConfig(WithBaseURL("https://x.invalid"), WithCredentials("p", "s"))
@@ -40,6 +55,20 @@ func TestCollectionRequest_validation(t *testing.T) {
 				t.Errorf("err = %v, want substring %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestCollectionRequest_callbackUrlAt255IsValid(t *testing.T) {
+	// CallbackURL of exactly 255 chars is on the boundary and must be accepted.
+	url := "https://" + strings.Repeat("x", 247) // 8 + 247 = 255
+	req := CollectionRequest{
+		QuoteID:              "q",
+		CustomerPhoneNumber:  "237699999999",
+		CustomerEmailAddress: "c@example.com",
+		CallbackURL:          url,
+	}
+	if err := req.validate(); err != nil {
+		t.Errorf("255-char CallbackURL should be valid, got: %v", err)
 	}
 }
 
