@@ -63,6 +63,9 @@ func (i *InitiateAPI) Bills(ctx context.Context, merchant string, serviceID int6
 	if merchant == "" {
 		return nil, errors.New("smobilpay: Bills requires merchant")
 	}
+	if serviceID <= 0 {
+		return nil, errors.New("smobilpay: Bills requires serviceID > 0")
+	}
 	if serviceNumber == "" {
 		return nil, errors.New("smobilpay: Bills requires serviceNumber")
 	}
@@ -80,6 +83,9 @@ func (i *InitiateAPI) Bills(ctx context.Context, merchant string, serviceID int6
 func (i *InitiateAPI) Subscriptions(ctx context.Context, merchant string, serviceID int64, serviceNumber, customerNumber string) ([]Subscription, error) {
 	if merchant == "" {
 		return nil, errors.New("smobilpay: Subscriptions requires merchant")
+	}
+	if serviceID <= 0 {
+		return nil, errors.New("smobilpay: Subscriptions requires serviceID > 0")
 	}
 	if serviceNumber == "" && customerNumber == "" {
 		return nil, errors.New("smobilpay: Subscriptions requires serviceNumber or customerNumber")

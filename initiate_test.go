@@ -173,6 +173,30 @@ func TestInitiate_Quote_emptyPayItemID(t *testing.T) {
 	}
 }
 
+func TestInitiate_Bills_zeroServiceID(t *testing.T) {
+	cfg, _ := NewConfig(WithBaseURL("https://x.invalid"), WithCredentials("p", "s"))
+	c, _ := New(cfg)
+	_, err := c.Initiate.Bills(context.Background(), "ENEO", 0, "203157530")
+	if err == nil {
+		t.Fatal("expected error on serviceID=0")
+	}
+	if !strings.Contains(err.Error(), "serviceID") {
+		t.Errorf("err = %v, want substring 'serviceID'", err)
+	}
+}
+
+func TestInitiate_Subscriptions_zeroServiceID(t *testing.T) {
+	cfg, _ := NewConfig(WithBaseURL("https://x.invalid"), WithCredentials("p", "s"))
+	c, _ := New(cfg)
+	_, err := c.Initiate.Subscriptions(context.Background(), "CMSABC", 0, "DEC-1", "")
+	if err == nil {
+		t.Fatal("expected error on serviceID=0")
+	}
+	if !strings.Contains(err.Error(), "serviceID") {
+		t.Errorf("err = %v, want substring 'serviceID'", err)
+	}
+}
+
 func TestInitiate_Quote(t *testing.T) {
 	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" || r.URL.Path != "/v2/quotestd" {
