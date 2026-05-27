@@ -67,6 +67,13 @@ func NewOAuth2Manager(baseURL, publicKey, secretKey string, refreshSkew time.Dur
 // AccessToken returns a valid bearer, minting one if the cache is empty
 // or the cached token is within refreshSkew of expiry. Concurrent
 // callers see a single in-flight mint via singleflight.
+//
+// Note: concurrent callers share a single in-flight mint. If the
+// winning goroutine's context is cancelled, all waiting callers
+// receive that cancellation error regardless of their own context
+// state. Callers passing short per-request deadlines should be
+// prepared to see DeadlineExceeded errors propagated from peer
+// requests.
 func (m *OAuth2Manager) AccessToken(ctx context.Context) (string, error) {
 	if t := m.peek(); t != nil && !t.Expired(m.clock(), m.skew) {
 		return t.AccessToken, nil
@@ -143,7 +150,10 @@ func (m *OAuth2Manager) mint(ctx context.Context) (*Token, error) {
 		return nil, &TransportError{Op: "POST " + tokenPath, Cause: err}
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, &TransportError{Op: "POST " + tokenPath, Cause: readErr}
+	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		oauthErr := tryReadOAuthErrorCode(body)
@@ -153,10 +163,10 @@ func (m *OAuth2Manager) mint(ctx context.Context) (*Token, error) {
 			Message:    fmt.Sprintf("OAuth token mint failed: %s", string(body)),
 		}
 	}
-	return parseTokenResponse(body, issuedAt)
+	return parseTokenResponse(body, issuedAt, resp.StatusCode)
 }
 
-func parseTokenResponse(body []byte, issuedAt time.Time) (*Token, error) {
+func parseTokenResponse(body []byte, issuedAt time.Time, httpStatus int) (*Token, error) {
 	var payload struct {
 		AccessToken string  `json:"access_token"`
 		TokenType   *string `json:"token_type"`
@@ -164,16 +174,16 @@ func parseTokenResponse(body []byte, issuedAt time.Time) (*Token, error) {
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, &AuthError{
-			HTTPStatus: 200,
+			HTTPStatus: httpStatus,
 			Message:    "OAuth token response not valid JSON",
 			Cause:      err,
 		}
 	}
 	if payload.AccessToken == "" {
-		return nil, &AuthError{HTTPStatus: 200, Message: "OAuth token response missing access_token"}
+		return nil, &AuthError{HTTPStatus: httpStatus, Message: "OAuth token response missing access_token"}
 	}
 	if payload.ExpiresIn == nil {
-		return nil, &AuthError{HTTPStatus: 200, Message: "OAuth token response missing expires_in"}
+		return nil, &AuthError{HTTPStatus: httpStatus, Message: "OAuth token response missing expires_in"}
 	}
 	tokenType := "Bearer"
 	if payload.TokenType != nil && *payload.TokenType != "" {

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -204,4 +206,146 @@ func TestOAuth2Manager_concurrentMintDedupes(t *testing.T) {
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Errorf("server hits = %d, want 1 (singleflight dedupes)", got)
 	}
+}
+
+func TestOAuth2Manager_Cached_emptyThenPopulated(t *testing.T) {
+	h := &oauthHandler{respond: okTokenHandler("jwt-A", 3600)}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	m := newTestManager(t, srv.URL, time.Now)
+	if _, ok := m.Cached(); ok {
+		t.Fatal("Cached() should be empty before any AccessToken call")
+	}
+	if _, err := m.AccessToken(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	tok, ok := m.Cached()
+	if !ok {
+		t.Fatal("Cached() should be populated after a successful mint")
+	}
+	if tok.AccessToken != "jwt-A" {
+		t.Errorf("Cached().AccessToken = %q, want jwt-A", tok.AccessToken)
+	}
+}
+
+func TestOAuth2Manager_Refresh_failureLeavesCacheIntact(t *testing.T) {
+	// First mint succeeds; then we flip the handler to 500 and call
+	// Refresh, which must error but must NOT overwrite the cached token.
+	h := &oauthHandler{respond: okTokenHandler("jwt-good", 3600)}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	m := newTestManager(t, srv.URL, time.Now)
+	if _, err := m.AccessToken(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// Sanity: cache populated.
+	before, _ := m.Cached()
+	if before.AccessToken != "jwt-good" {
+		t.Fatalf("setup: cached = %q", before.AccessToken)
+	}
+
+	h.mu.Lock()
+	h.respond = func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(500)
+		_, _ = io.WriteString(w, "boom")
+	}
+	h.mu.Unlock()
+
+	if _, err := m.Refresh(context.Background()); err == nil {
+		t.Fatal("expected error on 500 during Refresh")
+	}
+
+	after, ok := m.Cached()
+	if !ok || after.AccessToken != "jwt-good" {
+		t.Errorf("cache was disturbed after failed Refresh: ok=%v, token=%q", ok, after.AccessToken)
+	}
+}
+
+func TestOAuth2Manager_missingExpiresIn(t *testing.T) {
+	h := &oauthHandler{respond: func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"access_token":"jwt-X","token_type":"Bearer"}`)
+	}}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	m := newTestManager(t, srv.URL, time.Now)
+	_, err := m.AccessToken(context.Background())
+	var ae *apiclient.AuthError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *AuthError, got %v", err)
+	}
+	if !strings.Contains(ae.Message, "expires_in") {
+		t.Errorf("message = %q, want substring expires_in", ae.Message)
+	}
+}
+
+func TestOAuth2Manager_authErrorOnNonJSONBody(t *testing.T) {
+	h := &oauthHandler{respond: func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(401)
+		_, _ = io.WriteString(w, "Unauthorized")
+	}}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	m := newTestManager(t, srv.URL, time.Now)
+	_, err := m.AccessToken(context.Background())
+	var ae *apiclient.AuthError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *AuthError, got %v", err)
+	}
+	if ae.HTTPStatus != 401 || ae.OAuthError != "" {
+		t.Errorf("got %+v", ae)
+	}
+}
+
+func TestOAuth2Manager_authErrorOnMalformedJSONBody(t *testing.T) {
+	h := &oauthHandler{respond: func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":`)
+	}}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	m := newTestManager(t, srv.URL, time.Now)
+	_, err := m.AccessToken(context.Background())
+	var ae *apiclient.AuthError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *AuthError, got %v", err)
+	}
+	if !strings.Contains(ae.Message, "not valid JSON") {
+		t.Errorf("message = %q", ae.Message)
+	}
+}
+
+func TestOAuth2Manager_transportErrorOnDial(t *testing.T) {
+	// Point at an unreachable port to force a dial failure.
+	m := apiclient.NewOAuth2Manager(
+		"http://127.0.0.1:1", "pub", "sec",
+		5*time.Second,
+		&http.Client{Timeout: 200 * time.Millisecond},
+		time.Now,
+	)
+	_, err := m.AccessToken(context.Background())
+	var te *apiclient.TransportError
+	if !errors.As(err, &te) {
+		t.Fatalf("expected *TransportError, got %v", err)
+	}
+	if !strings.HasPrefix(te.Op, "POST /oauth/token") {
+		t.Errorf("Op = %q", te.Op)
+	}
+}
+
+func TestNewOAuth2Manager_defaultsClockAndHTTPClient(t *testing.T) {
+	// Pass nil for both clock and httpClient — the constructor should
+	// substitute time.Now and http.DefaultClient without panicking.
+	m := apiclient.NewOAuth2Manager("https://x.invalid", "p", "s", time.Second, nil, nil)
+	if m == nil {
+		t.Fatal("NewOAuth2Manager returned nil")
+	}
+	// Force a mint attempt — should hit the network and produce a
+	// TransportError (because x.invalid won't resolve / connect quickly).
+	// We don't care about success; only that the manager is wired up.
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, _ = m.AccessToken(ctx)
 }
