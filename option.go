@@ -36,7 +36,7 @@ func NewConfig(opts ...Option) (Config, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
+	cfg.BaseURL = strings.TrimSuffix(cfg.BaseURL, "/")
 	if cfg.BaseURL == "" {
 		return Config{}, errors.New("smobilpay: WithBaseURL is required")
 	}
@@ -50,7 +50,7 @@ func NewConfig(opts ...Option) (Config, error) {
 }
 
 // WithBaseURL sets the partner base URL (issued during onboarding).
-func WithBaseURL(url string) Option { return func(c *Config) { c.BaseURL = url } }
+func WithBaseURL(baseURL string) Option { return func(c *Config) { c.BaseURL = baseURL } }
 
 // WithCredentials sets the OAuth 2.0 client_credentials pair.
 func WithCredentials(publicKey, secretKey string) Option {
@@ -79,8 +79,10 @@ func WithTokenRefreshSkew(d time.Duration) Option {
 }
 
 // WithHTTPClient injects a custom *http.Client (e.g. for proxy or custom
-// TLS). When supplied, its Timeout overrides RequestTimeout for
-// per-request deadlines.
+// TLS). The injected client's own Timeout field governs per-request
+// deadlines; the value set via WithRequestTimeout is NOT applied to an
+// injected client. Pass an http.Client whose Timeout is 0 to disable
+// per-request timeouts entirely.
 func WithHTTPClient(client *http.Client) Option {
 	return func(c *Config) { c.HTTPClient = client }
 }

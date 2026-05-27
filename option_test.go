@@ -60,6 +60,32 @@ func TestNewConfig_emptyPublicKey(t *testing.T) {
 	}
 }
 
+func TestNewConfig_emptySecretKey(t *testing.T) {
+	if _, err := NewConfig(
+		WithBaseURL("https://api.example.invalid"),
+		WithCredentials("pub", ""),
+	); err == nil {
+		t.Error("expected error on empty secretKey")
+	}
+}
+
+func TestNewConfig_trimsOnlyOneTrailingSlash(t *testing.T) {
+	// Config only trims a single trailing slash. The transport and
+	// oauth2 layers re-normalize when they consume BaseURL, so a stray
+	// extra slash doesn't propagate to network calls — but it does
+	// remain visible on Config.BaseURL.
+	cfg, err := NewConfig(
+		WithBaseURL("https://api.example.invalid//"),
+		WithCredentials("pub", "sec"),
+	)
+	if err != nil {
+		t.Fatalf("NewConfig: %v", err)
+	}
+	if cfg.BaseURL != "https://api.example.invalid/" {
+		t.Errorf("BaseURL = %q, want %q", cfg.BaseURL, "https://api.example.invalid/")
+	}
+}
+
 func TestNewConfig_overrides(t *testing.T) {
 	hc := &http.Client{Timeout: time.Second}
 	cfg, err := NewConfig(
