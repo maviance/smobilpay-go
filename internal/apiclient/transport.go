@@ -97,7 +97,10 @@ func (t *Transport) do(req *http.Request, out any) error {
 		return &TransportError{Op: op, Cause: err}
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &TransportError{Op: op, Cause: fmt.Errorf("read response body: %w", err)}
+	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return decodeAPIError(resp.StatusCode, body)
