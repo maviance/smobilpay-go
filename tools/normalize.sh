@@ -9,15 +9,15 @@ if [ "$#" -ne 1 ]; then
 fi
 
 sed -E \
-    -e 's|^(\s+server time:\s+).*$|\1<REDACTED>|' \
-    -e 's|^(\s+nonce echo:\s+).*$|\1<REDACTED>|' \
-    -e 's|^(\s+quoteId:\s+).*$|\1<REDACTED>|' \
-    -e 's|^(\s+expiresAt:\s+).*$|\1<REDACTED>|' \
-    -e 's|^(\s+(first\|forced)\s+bearer prefix:\s+).*$|\1<REDACTED>|' \
-    -e 's|^(\s+transactions:\s+)[0-9]+$|\1<REDACTED>|' \
-    -e 's|^(\s+(services\|merchants):\s+)[0-9]+$|\1<REDACTED>|' \
-    -e 's|^(\s+-\s+[A-Z_]+:\s+)[0-9]+$|\1<REDACTED>|' \
-    -e 's|^(\s+range:\s+).*$|\1<REDACTED>|' \
-    -e 's|^(\s+\.\.\.and\s+)[0-9]+(\s+more)$|\1<REDACTED>\2|' \
+    -e 's|^([[:space:]]+server time:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+nonce echo:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+quoteId:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+expiresAt:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+(first\|forced)[[:space:]]+bearer prefix:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+transactions:[[:space:]]+)[0-9]+$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+(services\|merchants):[[:space:]]+)[0-9]+$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+-[[:space:]]+[A-Z_]+:[[:space:]]+)[0-9]+$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+range:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+\.\.\.and[[:space:]]+)[0-9]+([[:space:]]+more)$|\1<REDACTED>\2|' \
     -e 's|PTN-[0-9]+|PTN-<REDACTED>|g' \
     "$1"

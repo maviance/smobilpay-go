@@ -1,4 +1,5 @@
 GO          ?= go
+GOFLAGS     ?=
 COVERFILE   ?= cover.out
 COVER_MIN   ?= 80.0
 JAVA_DIR    ?= ../java
@@ -40,9 +41,11 @@ smoketest:
 
 smoketest-compare:
 	@mkdir -p $(BUILD_DIR)
+	@test -f $(JAVA_DIR)/smoke-test.json || \
+	    { echo "Error: $(JAVA_DIR)/smoke-test.json not found. Set JAVA_DIR=<path>."; exit 1; }
 	$(GO) run ./cmd/smoketest > $(BUILD_DIR)/smoketest.go.txt
 	cd $(JAVA_DIR) && ./gradlew runSmokeTest --console=plain \
-		--args="$$PWD/smoke-test.json" > $(CURDIR)/$(BUILD_DIR)/smoketest.java.txt
+		--args="$$PWD/smoke-test.json" > $(CURDIR)/$(BUILD_DIR)/smoketest.java.txt 2>&1
 	./tools/normalize.sh $(BUILD_DIR)/smoketest.go.txt   > $(BUILD_DIR)/smoketest.go.norm.txt
 	./tools/normalize.sh $(BUILD_DIR)/smoketest.java.txt > $(BUILD_DIR)/smoketest.java.norm.txt
 	@if diff -u $(BUILD_DIR)/smoketest.java.norm.txt $(BUILD_DIR)/smoketest.go.norm.txt; then \
