@@ -58,9 +58,6 @@ func New(cfg Config) (*Client, error) {
 // Config returns the configuration the client was constructed with.
 func (c *Client) Config() Config { return c.cfg }
 
-// API-group placeholders. Methods are added in subsequent commits
-// (Tasks 11-15).
-
 // VerifyAPI exposes /v2/ping, /v2/account, /v2/verifytx, /v2/historystd.
 type VerifyAPI struct{ tr *apiclient.Transport }
 

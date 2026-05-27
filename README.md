@@ -305,8 +305,13 @@ if err != nil {
 }
 voucher := vouchers[0]
 
+amount := 500
+if voucher.AmountLocalCur() != nil {
+	amount = int(*voucher.AmountLocalCur())
+}
+
 quote, err := client.Initiate.Quote(ctx, smob.QuoteRequest{
-	Amount:    int(*voucher.AmountLocalCur()),
+	Amount:    amount,
 	PayItemID: voucher.PayItemID(),
 })
 if err != nil {
@@ -336,8 +341,13 @@ if err != nil {
 }
 product := products[0]
 
+amount := 1000
+if product.AmountLocalCur() != nil {
+	amount = int(*product.AmountLocalCur())
+}
+
 quote, err := client.Initiate.Quote(ctx, smob.QuoteRequest{
-	Amount:    int(*product.AmountLocalCur()),
+	Amount:    amount,
 	PayItemID: product.PayItemID(),
 })
 if err != nil {
@@ -371,8 +381,15 @@ if err != nil {
 }
 sub := subs[0]
 
+// ENEO PREPAID is a custom-amount subscription (catalog amountLocalCur=0.0),
+// so we default to 1000 when no fixed price is set.
+amount := 1000
+if sub.AmountLocalCur() != nil {
+	amount = int(*sub.AmountLocalCur())
+}
+
 quote, err := client.Initiate.Quote(ctx, smob.QuoteRequest{
-	Amount:    int(*sub.AmountLocalCur()),
+	Amount:    amount,
 	PayItemID: sub.PayItemID(),
 })
 if err != nil {
@@ -384,7 +401,7 @@ resp, err := client.Confirm.Collect(ctx, smob.CollectionRequest{
 	CustomerPhoneNumber:  "237699999999",
 	CustomerEmailAddress: "customer@example.com",
 	ServiceNumber:        "DECODER-001234",
-	CustomerName:         sub.CustomerName(),
+	CustomerName:         sub.CustomerName,
 })
 ```
 
