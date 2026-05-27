@@ -1,0 +1,77 @@
+{
+  "_comment": "Acceptance-environment test data. Spec terminology: cashout = collection (money OUT of customer wallet), cashin = disbursement (money INTO recipient wallet). Copy this file to smoke-test.json (which is gitignored) and fill in baseUrl, publicKey, secretKey. Set any per-flow block to null (or remove it) to skip that scenario. The Java and Node.js clients' smoke-test.json schema is drop-in compatible with this Go runner.",
+
+  "_collect_comment": "By default every collection scenario stops at the quote — the harness never calls /v2/collectstd. To exercise a real collect on a given flow, add the following keys to that block: \"collect\": true, \"customerPhonenumber\": \"<payer/recipient MSISDN>\", \"customerEmailaddress\": \"<receipt email>\". For services with isReqServiceNumber=true (e.g. CMMTNMOMO Cash-In), also set \"serviceNumber\". Other optional pass-through fields: customerName, customerAddress, customerNumber, trid (auto-generated otherwise), tag, callbackUrl, cdata. WARNING: opting in moves real money on the partner balance.",
+  "_collect_example": {
+    "_comment": "Worked example — copy these keys into the cashin block to disburse 1000 XAF to MSISDN 699999999 via CMORANGEMOMO. Tested 2026-05-27.",
+    "serviceId": 50052,
+    "amount": 1000,
+    "collect": true,
+    "customerPhonenumber": "699999999",
+    "customerEmailaddress": "acceptance@maviance.test",
+    "serviceNumber": "699999999"
+  },
+
+  "baseUrl": "https://api.acceptance.example.invalid",
+  "publicKey": "TODO_FILL_IN_PARTNER_PUBLIC_KEY",
+  "secretKey": "TODO_FILL_IN_PARTNER_SECRET_KEY",
+  "apiVersion": "3.0.0",
+
+  "cashout": {
+    "_comment": "Collection — money flows OUT of customer wallet. Currently: CMMTNMOMO Cash-Out / Depot (row 20).",
+    "serviceId": 20053,
+    "amount": 500
+  },
+
+  "bill": {
+    "_comment": "SEARCHABLE_BILL. Currently: ENEO postpaid 203157530 (row 6).",
+    "merchant": "ENEO",
+    "serviceId": 10039,
+    "serviceNumber": "203157530"
+  },
+
+  "topup": {
+    "_comment": "TOPUP airtime. Row 12: CMMTN serviceId 20051. Other options: row 13 CMORANGE (20062), row 9 CMCamtel (20101).",
+    "serviceId": 20051,
+    "amount": 500
+  },
+
+  "voucher": {
+    "_comment": "VOUCHER. Discovered from the scenarioServices 'VOUCHER services:' line: serviceId=90041 (ENEO PREPAID).",
+    "serviceId": 90041,
+    "amount": 500
+  },
+
+  "product": {
+    "_comment": "PRODUCT. Canal+ decoder 90006 (row 1).",
+    "serviceId": 90006
+  },
+
+  "subscription": {
+    "_comment": "SUBSCRIPTION. ENEO prepaid (serviceId 300924). Merchant code 'ENEOPREPAID300924'. The API rejects sending both serviceNumber AND customerNumber (respCode 4107). amount is provided because ENEO PREPAID is a custom-amount subscription (catalog amountLocalCur=0.0).",
+    "merchant": "ENEOPREPAID300924",
+    "serviceId": 300924,
+    "serviceNumber": "20191953817",
+    "customerNumber": null,
+    "amount": 1000
+  },
+
+  "cashin": {
+    "_comment": "Disbursement — money flows INTO recipient wallet. Switched from CMMTNMOMO Cash-In (serviceId 20052 / MSISDN 677389120) because 677389120 is server-blocked on acceptance (respCode 40305). Now on CMORANGEMOMO Cash-In (serviceId 50052 / MSISDN 699999999) — verified live 2026-05-27 with a successful collect. Other wiki options: row 17 CMORANGEOM Cash-In (30052 / 697707102), row 21 CMYOOMEEMONEY Cashin (100237 / 242254751). To exercise a real /v2/collectstd, set the collect/customerPhonenumber/customerEmailaddress/serviceNumber keys per the example at the top of this file.",
+    "serviceId": 50052,
+    "amount": 1000
+  },
+
+  "verify": {
+    "_comment": "Pre-payment serviceNumber validation. ENEO/1001 (ENEO Bills/Factures, isVerifiable=true).",
+    "merchant": "ENEO",
+    "serviceId": 1001,
+    "serviceNumber": "203157530"
+  },
+
+  "validate": {
+    "_comment": "Account validation via GET /v2/validate — returns a CustomerAccount {status, name, destination}. Status: UNKNOWN | VALIDATED (syntax only) | VERIFIED (cross-checked with provider). Sample: MTN MoMo MSISDN 677389120 against the cashout service 20053 (CMMTNMOMO Cash-Out, row 20).",
+    "destination": "677389120",
+    "serviceId": 20053
+  }
+}
