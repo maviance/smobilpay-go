@@ -7,9 +7,20 @@ import (
 )
 
 // Date is a date-only value tolerant of the multiple wire formats emitted
-// by the Smobilpay API: "YYYY-MM-DD", "YYYY-MM-DDTHH:MM:SSZ", and
-// "YYYY-MM-DDTHH:MM:SS±HH:MM". MarshalJSON emits the canonical
-// "YYYY-MM-DD" form; a zero Date marshals to JSON null.
+// by the Smobilpay API. UnmarshalJSON accepts, in order of preference:
+//
+//   - "YYYY-MM-DD"                  — the canonical date-only form.
+//   - "YYYY-MM-DDTHH:MM:SSZ"        — RFC 3339 with UTC offset.
+//   - "YYYY-MM-DDTHH:MM:SS±HH:MM"   — RFC 3339 with a non-UTC offset.
+//   - "YYYY-MM-DDTHH:MM:SS"         — defensive fallback for naive datetimes.
+//
+// JSON null decodes into a zero-valued Date. Invalid or non-string input
+// returns an error.
+//
+// MarshalJSON emits "YYYY-MM-DD" in whatever timezone the underlying
+// time.Time was parsed in — so a "2024-01-15T00:30:00+01:00" round-trips
+// back to "2024-01-15", not the UTC-shifted "2024-01-14". A zero Date
+// marshals to JSON null.
 type Date struct {
 	time.Time
 }
@@ -22,8 +33,11 @@ var dateLayouts = []string{
 
 // UnmarshalJSON tries each accepted layout in order.
 func (d *Date) UnmarshalJSON(b []byte) error {
-	if len(b) == 0 || string(b) == "null" {
+	if string(b) == "null" {
 		return nil
+	}
+	if len(b) == 0 {
+		return errors.New("smobilpay: Date.UnmarshalJSON: empty input")
 	}
 	if len(b) < 2 || b[0] != '"' || b[len(b)-1] != '"' {
 		return errors.New("smobilpay: Date must be a JSON string")
@@ -116,10 +130,18 @@ const (
 	PaymentStatusSuccess  PaymentStatusType = "SUCCESS"
 )
 
-// PaymentItem is the common interface implemented by every payment-item
-// type returned by the masterdata and lookup endpoints (Cashout, Cashin,
-// Topup, Product, Bill, Subscription). PayItemID is the value passed to
-// QuoteRequest to obtain pricing.
+// PaymentItem is the common interface implemented by every catalog
+// payment-item type — Cashout, Cashin, Topup, Product (covers both
+// /v2/product and /v2/voucher), Bill, and Subscription. These all
+// share the shape returned by the masterdata and lookup endpoints and
+// can be uniformly fed into a QuoteRequest.
+//
+// PaymentStatus (from /v2/historystd and /v2/verifytx) is intentionally
+// NOT a PaymentItem: it reports the state of a completed transaction,
+// not a quotable catalog entry, and its serviceid is a string per the
+// partner spec rather than int64.
+//
+// PayItemID is the value passed to QuoteRequest to obtain pricing.
 type PaymentItem interface {
 	ServiceID() int64
 	Merchant() string

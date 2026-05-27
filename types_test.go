@@ -53,6 +53,16 @@ func TestDate_UnmarshalJSON_bad(t *testing.T) {
 	}
 }
 
+func TestDate_UnmarshalJSON_nonString(t *testing.T) {
+	var d Date
+	if err := json.Unmarshal([]byte(`1234567890`), &d); err == nil {
+		t.Error("expected error for JSON number value")
+	}
+	if err := json.Unmarshal([]byte(`true`), &d); err == nil {
+		t.Error("expected error for JSON boolean value")
+	}
+}
+
 func TestDate_MarshalJSON_canonical(t *testing.T) {
 	d := Date{time.Date(2024, time.January, 15, 0, 0, 0, 0, time.UTC)}
 	b, err := json.Marshal(d)
@@ -105,6 +115,56 @@ func TestMerchantStatus_jsonRoundtrip(t *testing.T) {
 		b, _ := json.Marshal(s)
 		if string(b) != raw {
 			t.Errorf("roundtrip %s = %s", raw, b)
+		}
+	}
+}
+
+func TestAmountType_constants(t *testing.T) {
+	cases := []struct {
+		got, want AmountType
+	}{
+		{AmountTypeFixed, "FIXED"},
+		{AmountTypeCustom, "CUSTOM"},
+		{AmountTypePartial, "PARTIAL"},
+		{AmountTypeOverpay, "OVERPAY"},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("AmountType = %q, want %q", c.got, c.want)
+		}
+	}
+}
+
+func TestBillType_constants(t *testing.T) {
+	if BillTypeRegular != "REGULAR" {
+		t.Errorf("BillTypeRegular = %q", BillTypeRegular)
+	}
+	if BillTypeOverdue != "OVERDUE" {
+		t.Errorf("BillTypeOverdue = %q", BillTypeOverdue)
+	}
+}
+
+func TestServiceStatus_constants(t *testing.T) {
+	if ServiceStatusActive != "Active" {
+		t.Errorf("ServiceStatusActive = %q", ServiceStatusActive)
+	}
+	if ServiceStatusInactive != "Inactive" {
+		t.Errorf("ServiceStatusInactive = %q", ServiceStatusInactive)
+	}
+}
+
+func TestPaymentStatusType_constants(t *testing.T) {
+	cases := []struct {
+		got, want PaymentStatusType
+	}{
+		{PaymentStatusReversed, "REVERSED"},
+		{PaymentStatusPending, "PENDING"},
+		{PaymentStatusErrored, "ERRORED"},
+		{PaymentStatusSuccess, "SUCCESS"},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("PaymentStatusType = %q, want %q", c.got, c.want)
 		}
 	}
 }
