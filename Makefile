@@ -38,7 +38,8 @@ lint:
 smoketest:
 	$(GO) run ./cmd/smoketest
 
-smoketest-compare: | $(BUILD_DIR)
+smoketest-compare:
+	@mkdir -p $(BUILD_DIR)
 	$(GO) run ./cmd/smoketest > $(BUILD_DIR)/smoketest.go.txt
 	cd $(JAVA_DIR) && ./gradlew runSmokeTest --console=plain \
 		--args="$$PWD/smoke-test.json" > $(CURDIR)/$(BUILD_DIR)/smoketest.java.txt
@@ -53,6 +54,3 @@ tidy:
 
 clean:
 	rm -rf $(BUILD_DIR) $(COVERFILE) coverage.html
-
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
