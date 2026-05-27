@@ -20,4 +20,11 @@ sed -E \
     -e 's|^([[:space:]]+range:[[:space:]]+).*$|\1<REDACTED>|' \
     -e 's|^([[:space:]]+\.\.\.and[[:space:]]+)[0-9]+([[:space:]]+more)$|\1<REDACTED>\2|' \
     -e 's|PTN-[0-9]+|PTN-<REDACTED>|g' \
+    -e 's|clearingDate=[^ ]+|clearingDate=<REDACTED>|g' \
+    -e 's|^([[:space:]]+ptn:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+receiptNumber:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+veriCode:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+agentBalance:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+timestamp:[[:space:]]+).*$|\1<REDACTED>|' \
+    -e 's|^([[:space:]]+trid:[[:space:]]+).*$|\1<REDACTED>|' \
     "$1"

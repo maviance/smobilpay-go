@@ -569,13 +569,13 @@ func (h *Harness) scenarioBill(ctx context.Context) error {
 		return fmt.Errorf("no bills for %s/%d/%s", c.Merchant, c.ServiceID, c.ServiceNumber)
 	}
 	bill := bills[0]
-	var amt float64
-	if bill.AmountLocalCur() != nil {
-		amt = *bill.AmountLocalCur()
+	amount, err := resolveAmount(&bill, 0)
+	if err != nil {
+		return err
 	}
-	detail(fmt.Sprintf("picked: %s (%s, amount=%g %s, due=%s)",
-		bill.PayItemID(), bill.BillType, amt, bill.LocalCur(), bill.BillDueDate.Format("2006-01-02")))
-	return quoteAndReport(ctx, h.client, &bill, int(amt), billCollectOpts(c))
+	detail(fmt.Sprintf("picked: %s (%s, amount=%d %s, due=%s)",
+		bill.PayItemID(), bill.BillType, amount, bill.LocalCur(), bill.BillDueDate.Format("2006-01-02")))
+	return quoteAndReport(ctx, h.client, &bill, amount, billCollectOpts(c))
 }
 
 func (h *Harness) scenarioTopup(ctx context.Context) error {
