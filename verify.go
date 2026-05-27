@@ -115,7 +115,9 @@ func (v *VerifyAPI) HistoryByTrid(ctx context.Context, trid string) ([]PaymentSt
 }
 
 // HistoryByDateRange returns history records over an inclusive date
-// range. The dates are sent as ISO-8601 with the Z offset.
+// range. The dates are sent as YYYY-MM-DD (UTC calendar date); any
+// time-of-day component on from/to is silently dropped on the wire.
+// This matches the partner spec (format: date) and the Java client.
 func (v *VerifyAPI) HistoryByDateRange(ctx context.Context, from, to time.Time) ([]PaymentStatus, error) {
 	if from.IsZero() || to.IsZero() {
 		return nil, errors.New("smobilpay: HistoryByDateRange requires both from and to")

@@ -13,16 +13,14 @@ import (
 
 // newMockClient stands up an httptest server that always responds to the
 // OAuth token mint and routes all other paths to handler.
-func newMockClient(t *testing.T, handler http.HandlerFunc) (*Client, *http.Request) {
+func newMockClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
-	var captured *http.Request
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/oauth/token" {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"access_token":"jwt-X","token_type":"Bearer","expires_in":3600}`)
 			return
 		}
-		captured = r
 		handler(w, r)
 	}))
 	t.Cleanup(srv.Close)
@@ -34,11 +32,11 @@ func newMockClient(t *testing.T, handler http.HandlerFunc) (*Client, *http.Reque
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c, captured
+	return c
 }
 
 func TestVerify_Ping(t *testing.T) {
-	c, _ := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" || r.URL.Path != "/v2/ping" {
 			http.Error(w, "bad", 400)
 			return
@@ -59,7 +57,7 @@ func TestVerify_Ping(t *testing.T) {
 }
 
 func TestVerify_Account(t *testing.T) {
-	c, _ := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"balance":1000.5,"currency":"XAF","key":"k","agentId":"a1","agentName":"A","agentAddress":"x","agentPhonenumber":"237699999999","companyName":"C","companyAddress":"y","companyPhonenumber":"237699999998","limitMax":10000,"limitRemaining":9000}`)
 	})
@@ -81,7 +79,7 @@ func TestVerify_VerifyTransaction_requiresOneParam(t *testing.T) {
 }
 
 func TestVerify_VerifyTransaction_byPtn(t *testing.T) {
-	c, _ := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.RawQuery != "ptn=P-1" {
 			t.Errorf("query = %q", r.URL.RawQuery)
 		}
@@ -109,7 +107,7 @@ func TestVerify_HistoryByDateRange_validatesOrder(t *testing.T) {
 
 func TestVerify_HistoryByDateRange_sendsTimestamps(t *testing.T) {
 	var captured string
-	c, _ := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
 		captured = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `[]`)
@@ -122,6 +120,52 @@ func TestVerify_HistoryByDateRange_sendsTimestamps(t *testing.T) {
 	if !strings.Contains(captured, "timestamp_from=2024-05-01") ||
 		!strings.Contains(captured, "timestamp_to=2024-05-31") {
 		t.Errorf("query = %q", captured)
+	}
+}
+
+func TestVerify_HistoryByPtn_requiresPtn(t *testing.T) {
+	cfg, _ := NewConfig(WithBaseURL("https://x.invalid"), WithCredentials("p", "s"))
+	c, _ := New(cfg)
+	if _, err := c.Verify.HistoryByPtn(context.Background(), ""); err == nil {
+		t.Error("expected error on empty ptn")
+	}
+}
+
+func TestVerify_HistoryByPtn_sendsPtn(t *testing.T) {
+	var captured string
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+		captured = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `[]`)
+	})
+	if _, err := c.Verify.HistoryByPtn(context.Background(), "P-7"); err != nil {
+		t.Fatal(err)
+	}
+	if captured != "ptn=P-7" {
+		t.Errorf("query = %q, want ptn=P-7", captured)
+	}
+}
+
+func TestVerify_HistoryByTrid_requiresTrid(t *testing.T) {
+	cfg, _ := NewConfig(WithBaseURL("https://x.invalid"), WithCredentials("p", "s"))
+	c, _ := New(cfg)
+	if _, err := c.Verify.HistoryByTrid(context.Background(), ""); err == nil {
+		t.Error("expected error on empty trid")
+	}
+}
+
+func TestVerify_HistoryByTrid_sendsTrid(t *testing.T) {
+	var captured string
+	c := newMockClient(t, func(w http.ResponseWriter, r *http.Request) {
+		captured = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `[]`)
+	})
+	if _, err := c.Verify.HistoryByTrid(context.Background(), "ORDER-1"); err != nil {
+		t.Fatal(err)
+	}
+	if captured != "trid=ORDER-1" {
+		t.Errorf("query = %q, want trid=ORDER-1", captured)
 	}
 }
 
