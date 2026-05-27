@@ -1,8 +1,10 @@
 package smobilpay
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -161,4 +163,156 @@ type PaymentItem interface {
 type I18nText struct {
 	Language  string `json:"language"`
 	LocalText string `json:"localText"`
+}
+
+// ---------------------------------------------------------------------------
+// Lenient JSON helpers.
+//
+// The Smobilpay acceptance server diverges from its own OpenAPI spec by
+// serializing several numeric fields as quoted JSON strings (e.g. an
+// account's limitMax comes through as "100000000.00", and serviceid is
+// "20053" across most catalog endpoints). The Service masterdata also
+// emits the isReq* flags as JSON numbers 0/1 rather than booleans.
+//
+// These unexported helper types absorb both the spec-correct native
+// form AND the actual wire form. They are plugged into the affected
+// DTOs via custom UnmarshalJSON methods (alias-shadow pattern) so the
+// public field types stay clean.
+// ---------------------------------------------------------------------------
+
+// lenientInt64 decodes either a JSON integer or a quoted string holding an
+// integer. Empty string and JSON null decode to 0.
+type lenientInt64 int64
+
+func (l *lenientInt64) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 || string(b) == "null" {
+		*l = 0
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		if s == "" {
+			*l = 0
+			return nil
+		}
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return fmt.Errorf("smobilpay: lenientInt64: cannot parse %q: %w", s, err)
+		}
+		*l = lenientInt64(v)
+		return nil
+	}
+	var v int64
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*l = lenientInt64(v)
+	return nil
+}
+
+// lenientFloat64 decodes either a JSON number or a quoted string holding
+// a numeric value. Empty string and JSON null decode to 0.
+type lenientFloat64 float64
+
+func (l *lenientFloat64) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 || string(b) == "null" {
+		*l = 0
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		if s == "" {
+			*l = 0
+			return nil
+		}
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return fmt.Errorf("smobilpay: lenientFloat64: cannot parse %q: %w", s, err)
+		}
+		*l = lenientFloat64(v)
+		return nil
+	}
+	var v float64
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*l = lenientFloat64(v)
+	return nil
+}
+
+// lenientFloat64Ptr decodes the same forms as lenientFloat64 plus JSON
+// null, surfacing the result as a *float64 (nil for null/missing).
+type lenientFloat64Ptr struct{ V *float64 }
+
+func (l *lenientFloat64Ptr) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 || string(b) == "null" {
+		l.V = nil
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		if s == "" {
+			l.V = nil
+			return nil
+		}
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return fmt.Errorf("smobilpay: lenientFloat64Ptr: cannot parse %q: %w", s, err)
+		}
+		l.V = &v
+		return nil
+	}
+	var v float64
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	l.V = &v
+	return nil
+}
+
+// lenientBool decodes booleans from native JSON booleans, JSON numbers
+// (0=false, non-zero=true), or quoted strings ("true"/"false"/"1"/"0"/"").
+type lenientBool bool
+
+func (l *lenientBool) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 || string(b) == "null" {
+		*l = false
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		switch s {
+		case "", "0", "false", "f", "False", "FALSE":
+			*l = false
+		case "1", "true", "t", "True", "TRUE":
+			*l = true
+		default:
+			return fmt.Errorf("smobilpay: lenientBool: cannot parse %q", s)
+		}
+		return nil
+	}
+	// Try number (0/1) first; fall through to bool.
+	var n float64
+	if err := json.Unmarshal(b, &n); err == nil {
+		*l = lenientBool(n != 0)
+		return nil
+	}
+	var v bool
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*l = lenientBool(v)
+	return nil
 }

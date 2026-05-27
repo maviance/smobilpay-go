@@ -2,6 +2,7 @@ package smobilpay
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/mail"
 	"regexp"
@@ -78,6 +79,29 @@ type CollectionResponse struct {
 	PayItemID      string            `json:"payItemId,omitempty"`
 	PayItemDescr   string            `json:"payItemDescr,omitempty"`
 	Tag            string            `json:"tag,omitempty"`
+}
+
+// UnmarshalJSON for CollectionResponse absorbs the server's
+// string-encoded monetary fields. /v2/collectstd returns agentBalance,
+// priceLocalCur, and priceSystemCur as quoted strings (e.g. "1010.00"),
+// diverging from the OpenAPI spec.
+func (r *CollectionResponse) UnmarshalJSON(data []byte) error {
+	type Alias CollectionResponse
+	aux := struct {
+		AgentBalance   lenientFloat64Ptr `json:"agentBalance"`
+		PriceLocalCur  lenientFloat64Ptr `json:"priceLocalCur"`
+		PriceSystemCur lenientFloat64Ptr `json:"priceSystemCur"`
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	r.AgentBalance = aux.AgentBalance.V
+	r.PriceLocalCur = aux.PriceLocalCur.V
+	r.PriceSystemCur = aux.PriceSystemCur.V
+	return nil
 }
 
 // Collect executes a payment collection against a valid (unexpired)

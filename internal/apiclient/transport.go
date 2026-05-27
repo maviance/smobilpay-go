@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -118,17 +119,52 @@ func decodeAPIError(status int, body []byte) error {
 	apiErr := &APIError{HTTPStatus: status, RawBody: string(body)}
 	if len(body) > 0 {
 		var env struct {
-			RespCode int    `json:"respCode"`
-			DevMsg   string `json:"devMsg"`
-			UsrMsg   string `json:"usrMsg"`
-			Link     string `json:"link"`
+			RespCode flexInt `json:"respCode"`
+			DevMsg   string  `json:"devMsg"`
+			UsrMsg   string  `json:"usrMsg"`
+			Link     string  `json:"link"`
 		}
 		if err := json.Unmarshal(body, &env); err == nil && env.RespCode != 0 {
-			apiErr.RespCode = env.RespCode
+			apiErr.RespCode = int(env.RespCode)
 			apiErr.DevMsg = env.DevMsg
 			apiErr.UsrMsg = env.UsrMsg
 			apiErr.Link = env.Link
 		}
 	}
 	return apiErr
+}
+
+// flexInt decodes a JSON int or a quoted-string int. The Smobilpay
+// error envelope serialises respCode as a string in some responses; this
+// absorbs both forms so the per-respCode skip logic in callers keeps
+// working.
+type flexInt int
+
+func (f *flexInt) UnmarshalJSON(b []byte) error {
+	if len(b) == 0 || string(b) == "null" {
+		*f = 0
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		if s == "" {
+			*f = 0
+			return nil
+		}
+		v, err := strconv.Atoi(s)
+		if err != nil {
+			return fmt.Errorf("apiclient: flexInt: cannot parse %q: %w", s, err)
+		}
+		*f = flexInt(v)
+		return nil
+	}
+	var v int
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*f = flexInt(v)
+	return nil
 }

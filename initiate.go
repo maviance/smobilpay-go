@@ -2,6 +2,7 @@ package smobilpay
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -35,6 +36,52 @@ type Subscription struct {
 	EndDate           Date   `json:"endDate,omitempty"`
 }
 
+// UnmarshalJSON for Bill absorbs the server's lenient encodings of
+// serviceid (string), amountLocalCur (string or null), optNmb, and
+// penaltyAmount (string).
+func (b *Bill) UnmarshalJSON(data []byte) error {
+	type Alias Bill
+	aux := struct {
+		ServiceIDValue      lenientInt64      `json:"serviceid"`
+		AmountLocalCurValue lenientFloat64Ptr `json:"amountLocalCur"`
+		OptNmbValue         lenientFloat64Ptr `json:"optNmb"`
+		PenaltyAmount       lenientFloat64Ptr `json:"penaltyAmount"`
+		*Alias
+	}{
+		Alias: (*Alias)(b),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	b.ServiceIDValue = int64(aux.ServiceIDValue)
+	b.AmountLocalCurValue = aux.AmountLocalCurValue.V
+	b.OptNmbValue = aux.OptNmbValue.V
+	b.PenaltyAmount = aux.PenaltyAmount.V
+	return nil
+}
+
+// UnmarshalJSON for Subscription absorbs the server's lenient
+// encodings of serviceid (string), amountLocalCur (string or null),
+// and optNmb.
+func (s *Subscription) UnmarshalJSON(data []byte) error {
+	type Alias Subscription
+	aux := struct {
+		ServiceIDValue      lenientInt64      `json:"serviceid"`
+		AmountLocalCurValue lenientFloat64Ptr `json:"amountLocalCur"`
+		OptNmbValue         lenientFloat64Ptr `json:"optNmb"`
+		*Alias
+	}{
+		Alias: (*Alias)(s),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	s.ServiceIDValue = int64(aux.ServiceIDValue)
+	s.AmountLocalCurValue = aux.AmountLocalCurValue.V
+	s.OptNmbValue = aux.OptNmbValue.V
+	return nil
+}
+
 // QuoteRequest is the body for POST /v2/quotestd. Amount must be >= 1.
 type QuoteRequest struct {
 	Amount    int    `json:"amount"`
@@ -54,6 +101,29 @@ type QuoteResponse struct {
 	LocalCur       string    `json:"localCur"`
 	SystemCur      string    `json:"systemCur"`
 	Promotion      string    `json:"promotion,omitempty"`
+}
+
+// UnmarshalJSON for QuoteResponse absorbs the server's string-encoded
+// monetary fields. /v2/quotestd returns amountLocalCur, priceLocalCur,
+// and priceSystemCur as quoted strings (e.g. "2500.00"), diverging from
+// the OpenAPI spec which declares them as numbers.
+func (q *QuoteResponse) UnmarshalJSON(data []byte) error {
+	type Alias QuoteResponse
+	aux := struct {
+		AmountLocalCur lenientFloat64Ptr `json:"amountLocalCur"`
+		PriceLocalCur  lenientFloat64Ptr `json:"priceLocalCur"`
+		PriceSystemCur lenientFloat64Ptr `json:"priceSystemCur"`
+		*Alias
+	}{
+		Alias: (*Alias)(q),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	q.AmountLocalCur = aux.AmountLocalCur.V
+	q.PriceLocalCur = aux.PriceLocalCur.V
+	q.PriceSystemCur = aux.PriceSystemCur.V
+	return nil
 }
 
 // Bills searches bills for a service number. For SEARCHABLE_BILL

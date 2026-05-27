@@ -2,6 +2,7 @@ package smobilpay
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/maviance/smobilpay-go/internal/apiclient"
 )
@@ -92,6 +93,117 @@ type Topup struct{ paymentItemBase }
 // /v2/voucher). For voucher purchases the digital code is delivered on
 // CollectionResponse.PIN.
 type Product struct{ paymentItemBase }
+
+// UnmarshalJSON for Service tolerates the acceptance server's
+// serialization of serviceid as a quoted string and isReq* flags as
+// JSON numbers 0/1 (instead of booleans).
+func (s *Service) UnmarshalJSON(data []byte) error {
+	type Alias Service
+	aux := struct {
+		ServiceID            lenientInt64 `json:"serviceid"`
+		IsReqCustomerName    lenientBool  `json:"isReqCustomerName"`
+		IsReqCustomerAddress lenientBool  `json:"isReqCustomerAddress"`
+		IsReqCustomerNumber  lenientBool  `json:"isReqCustomerNumber"`
+		IsReqServiceNumber   lenientBool  `json:"isReqServiceNumber"`
+		*Alias
+	}{
+		Alias: (*Alias)(s),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	s.ServiceID = int64(aux.ServiceID)
+	s.IsReqCustomerName = bool(aux.IsReqCustomerName)
+	s.IsReqCustomerAddress = bool(aux.IsReqCustomerAddress)
+	s.IsReqCustomerNumber = bool(aux.IsReqCustomerNumber)
+	s.IsReqServiceNumber = bool(aux.IsReqServiceNumber)
+	return nil
+}
+
+// UnmarshalJSON for Cashout absorbs the server's lenient encodings of
+// serviceid (string), amountLocalCur (string or null), and optNmb.
+func (c *Cashout) UnmarshalJSON(data []byte) error {
+	type Alias Cashout
+	aux := struct {
+		ServiceIDValue      lenientInt64      `json:"serviceid"`
+		AmountLocalCurValue lenientFloat64Ptr `json:"amountLocalCur"`
+		OptNmbValue         lenientFloat64Ptr `json:"optNmb"`
+		*Alias
+	}{
+		Alias: (*Alias)(c),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	c.ServiceIDValue = int64(aux.ServiceIDValue)
+	c.AmountLocalCurValue = aux.AmountLocalCurValue.V
+	c.OptNmbValue = aux.OptNmbValue.V
+	return nil
+}
+
+// UnmarshalJSON for Cashin absorbs the server's lenient encodings of
+// serviceid (string), amountLocalCur (string or null), and optNmb.
+func (c *Cashin) UnmarshalJSON(data []byte) error {
+	type Alias Cashin
+	aux := struct {
+		ServiceIDValue      lenientInt64      `json:"serviceid"`
+		AmountLocalCurValue lenientFloat64Ptr `json:"amountLocalCur"`
+		OptNmbValue         lenientFloat64Ptr `json:"optNmb"`
+		*Alias
+	}{
+		Alias: (*Alias)(c),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	c.ServiceIDValue = int64(aux.ServiceIDValue)
+	c.AmountLocalCurValue = aux.AmountLocalCurValue.V
+	c.OptNmbValue = aux.OptNmbValue.V
+	return nil
+}
+
+// UnmarshalJSON for Topup absorbs the server's lenient encodings of
+// serviceid (string), amountLocalCur (string or null), and optNmb.
+func (t *Topup) UnmarshalJSON(data []byte) error {
+	type Alias Topup
+	aux := struct {
+		ServiceIDValue      lenientInt64      `json:"serviceid"`
+		AmountLocalCurValue lenientFloat64Ptr `json:"amountLocalCur"`
+		OptNmbValue         lenientFloat64Ptr `json:"optNmb"`
+		*Alias
+	}{
+		Alias: (*Alias)(t),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	t.ServiceIDValue = int64(aux.ServiceIDValue)
+	t.AmountLocalCurValue = aux.AmountLocalCurValue.V
+	t.OptNmbValue = aux.OptNmbValue.V
+	return nil
+}
+
+// UnmarshalJSON for Product absorbs the server's lenient encodings of
+// serviceid (string), amountLocalCur (string or null), and optNmb.
+// Covers both /v2/product and /v2/voucher (same wire shape).
+func (p *Product) UnmarshalJSON(data []byte) error {
+	type Alias Product
+	aux := struct {
+		ServiceIDValue      lenientInt64      `json:"serviceid"`
+		AmountLocalCurValue lenientFloat64Ptr `json:"amountLocalCur"`
+		OptNmbValue         lenientFloat64Ptr `json:"optNmb"`
+		*Alias
+	}{
+		Alias: (*Alias)(p),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	p.ServiceIDValue = int64(aux.ServiceIDValue)
+	p.AmountLocalCurValue = aux.AmountLocalCurValue.V
+	p.OptNmbValue = aux.OptNmbValue.V
+	return nil
+}
 
 // Merchants returns every merchant in the system (GET /v2/merchant).
 func (m *MasterdataAPI) Merchants(ctx context.Context) ([]Merchant, error) {
