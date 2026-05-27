@@ -13,6 +13,8 @@
 //
 // # Quick start
 //
+//	import "github.com/maviance/smobilpay-go"
+//
 //	cfg, err := smobilpay.NewConfig(
 //	    smobilpay.WithBaseURL("https://api.example.invalid"),
 //	    smobilpay.WithCredentials(pub, sec),
@@ -23,6 +25,8 @@
 //	if err != nil { /* unable to initialise */ }
 //
 //	ping, err := client.Verify.Ping(context.Background())
+//	if err != nil { /* call failed */ }
+//	_ = ping
 //
 // # Errors
 //
