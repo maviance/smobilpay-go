@@ -38,14 +38,17 @@ func TestNew_initializesAllAPIGroups(t *testing.T) {
 }
 
 func TestNew_rejectsInvalidConfig(t *testing.T) {
-	// Zero Config has no BaseURL; that's the input we must reject.
+	// Zero Config has no BaseURL, no credentials, and no HTTPClient.
+	// The error message must enumerate every missing field.
 	_, err := New(Config{})
 	if err == nil {
 		t.Fatal("expected error on empty Config")
 	}
-	if !strings.Contains(err.Error(), "BaseURL") &&
-		!strings.Contains(err.Error(), "Credentials") {
-		t.Errorf("unexpected message: %v", err)
+	msg := err.Error()
+	for _, want := range []string{"BaseURL", "Credentials", "HTTPClient"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error message missing %q: %v", want, err)
+		}
 	}
 }
 

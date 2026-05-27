@@ -1,7 +1,8 @@
 package smobilpay
 
 import (
-	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/maviance/smobilpay-go/internal/apiclient"
 )
@@ -11,8 +12,7 @@ import (
 // concurrent use and intended to be reused for the lifetime of the
 // application.
 type Client struct {
-	cfg       Config
-	transport *apiclient.Transport
+	cfg Config
 
 	Verify            *VerifyAPI
 	Masterdata        *MasterdataAPI
@@ -22,11 +22,23 @@ type Client struct {
 	Tokens            *apiclient.OAuth2Manager
 }
 
-// New constructs a Client. The Config must have been built via
-// NewConfig; passing a zero Config returns an error.
+// New constructs a Client from a validated Config. Build the Config
+// via NewConfig — New requires BaseURL, Credentials, and HTTPClient
+// to be present and returns an error listing any missing field
+// otherwise.
 func New(cfg Config) (*Client, error) {
-	if cfg.BaseURL == "" || cfg.PublicKey == "" || cfg.SecretKey == "" || cfg.HTTPClient == nil {
-		return nil, errors.New("smobilpay: Config is incomplete; use NewConfig + WithBaseURL + WithCredentials")
+	var missing []string
+	if cfg.BaseURL == "" {
+		missing = append(missing, "BaseURL")
+	}
+	if cfg.PublicKey == "" || cfg.SecretKey == "" {
+		missing = append(missing, "Credentials")
+	}
+	if cfg.HTTPClient == nil {
+		missing = append(missing, "HTTPClient")
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("smobilpay: Config is incomplete (missing: %s); construct it via NewConfig", strings.Join(missing, ", "))
 	}
 	tokens := apiclient.NewOAuth2Manager(
 		cfg.BaseURL, cfg.PublicKey, cfg.SecretKey,
@@ -34,7 +46,6 @@ func New(cfg Config) (*Client, error) {
 	tr := apiclient.NewTransport(cfg.BaseURL, cfg.APIVersion, cfg.HTTPClient, tokens)
 	return &Client{
 		cfg:               cfg,
-		transport:         tr,
 		Verify:            &VerifyAPI{tr: tr},
 		Masterdata:        &MasterdataAPI{tr: tr},
 		Initiate:          &InitiateAPI{tr: tr},
