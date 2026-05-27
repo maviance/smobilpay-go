@@ -748,7 +748,7 @@ func (h *Harness) scenarioHistoryLast7Days(ctx context.Context) error {
 	}
 	detail("range:        " + from.Format("2006-01-02") + " -> " + today.Format("2006-01-02"))
 	detail(fmt.Sprintf("transactions: %d", len(rows)))
-	sample := 3
+	sample := 30
 	if len(rows) < sample {
 		sample = len(rows)
 	}
