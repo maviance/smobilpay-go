@@ -110,3 +110,23 @@ func TestSmokeConfig_parsesCollectOpts(t *testing.T) {
 		t.Errorf("ServiceNumber = %q, want 699999999", cfg.Cashin.ServiceNumber)
 	}
 }
+
+func TestSmokeConfig_parses_validateBlock(t *testing.T) {
+	raw := `{
+		"baseUrl": "u",
+		"publicKey": "p",
+		"secretKey": "s",
+		"validate": {"destination": "677389120", "serviceId": 20053}
+	}`
+	var cfg SmokeConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// The Go field is named Validation; the JSON key is "validate".
+	if cfg.Validation == nil {
+		t.Fatal("Validation block did not decode")
+	}
+	if cfg.Validation.Destination != "677389120" || cfg.Validation.ServiceID != 20053 {
+		t.Errorf("Validation = %+v", cfg.Validation)
+	}
+}

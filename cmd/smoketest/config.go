@@ -37,13 +37,11 @@ type SmokeConfig struct {
 	Validation *ValidateCfg `json:"validate,omitempty"`
 }
 
-// CashoutCfg drives the cashout (collection) scenario — money flows OUT of
-// the customer wallet.
-type CashoutCfg struct {
-	ServiceID int64 `json:"serviceId"`
-	Amount    int   `json:"amount"`
-
-	// Collect opt-in fields.
+// CollectOpts carries the optional fields for /v2/collectstd. Embed
+// this struct into a block to inherit the standard collect opt-in
+// surface; encoding/json promotes the fields transparently so the
+// on-disk JSON shape is unchanged.
+type CollectOpts struct {
 	Collect              bool   `json:"collect,omitempty"`
 	CustomerPhoneNumber  string `json:"customerPhonenumber,omitempty"`
 	CustomerEmailAddress string `json:"customerEmailaddress,omitempty"`
@@ -57,15 +55,25 @@ type CashoutCfg struct {
 	CData                string `json:"cdata,omitempty"`
 }
 
-// BillCfg drives the bill payment scenario. ServiceNumber is required for
-// SEARCHABLE_BILL discovery, so it is declared block-side (not as a
-// collect-only field).
+// CashoutCfg drives the cashout (collection) scenario — money flows OUT of
+// the customer wallet.
+type CashoutCfg struct {
+	ServiceID int64 `json:"serviceId"`
+	Amount    int   `json:"amount"`
+	CollectOpts
+}
+
+// BillCfg drives the bill payment scenario. ServiceNumber is required
+// for SEARCHABLE_BILL discovery, so it's a block-level field rather
+// than coming through CollectOpts — that's why this block doesn't
+// embed CollectOpts and instead declares the collect opt-in fields
+// directly (minus ServiceNumber, which lives above).
 type BillCfg struct {
 	Merchant      string `json:"merchant"`
 	ServiceID     int64  `json:"serviceId"`
 	ServiceNumber string `json:"serviceNumber"`
 
-	// Collect opt-in fields.
+	// Collect opt-in fields (mirror CollectOpts, minus ServiceNumber).
 	Collect              bool   `json:"collect,omitempty"`
 	CustomerPhoneNumber  string `json:"customerPhonenumber,omitempty"`
 	CustomerEmailAddress string `json:"customerEmailaddress,omitempty"`
@@ -82,38 +90,14 @@ type BillCfg struct {
 type TopupCfg struct {
 	ServiceID int64 `json:"serviceId"`
 	Amount    int   `json:"amount"`
-
-	// Collect opt-in fields.
-	Collect              bool   `json:"collect,omitempty"`
-	CustomerPhoneNumber  string `json:"customerPhonenumber,omitempty"`
-	CustomerEmailAddress string `json:"customerEmailaddress,omitempty"`
-	ServiceNumber        string `json:"serviceNumber,omitempty"`
-	CustomerName         string `json:"customerName,omitempty"`
-	CustomerAddress      string `json:"customerAddress,omitempty"`
-	CustomerNumber       string `json:"customerNumber,omitempty"`
-	TRID                 string `json:"trid,omitempty"`
-	Tag                  string `json:"tag,omitempty"`
-	CallbackURL          string `json:"callbackUrl,omitempty"`
-	CData                string `json:"cdata,omitempty"`
+	CollectOpts
 }
 
 // VoucherCfg drives the voucher purchase scenario.
 type VoucherCfg struct {
 	ServiceID int64 `json:"serviceId"`
 	Amount    int   `json:"amount"`
-
-	// Collect opt-in fields.
-	Collect              bool   `json:"collect,omitempty"`
-	CustomerPhoneNumber  string `json:"customerPhonenumber,omitempty"`
-	CustomerEmailAddress string `json:"customerEmailaddress,omitempty"`
-	ServiceNumber        string `json:"serviceNumber,omitempty"`
-	CustomerName         string `json:"customerName,omitempty"`
-	CustomerAddress      string `json:"customerAddress,omitempty"`
-	CustomerNumber       string `json:"customerNumber,omitempty"`
-	TRID                 string `json:"trid,omitempty"`
-	Tag                  string `json:"tag,omitempty"`
-	CallbackURL          string `json:"callbackUrl,omitempty"`
-	CData                string `json:"cdata,omitempty"`
+	CollectOpts
 }
 
 // ProductCfg drives the product purchase scenario. Amount is omitempty
@@ -121,25 +105,14 @@ type VoucherCfg struct {
 type ProductCfg struct {
 	ServiceID int64 `json:"serviceId"`
 	Amount    int   `json:"amount,omitempty"`
-
-	// Collect opt-in fields.
-	Collect              bool   `json:"collect,omitempty"`
-	CustomerPhoneNumber  string `json:"customerPhonenumber,omitempty"`
-	CustomerEmailAddress string `json:"customerEmailaddress,omitempty"`
-	ServiceNumber        string `json:"serviceNumber,omitempty"`
-	CustomerName         string `json:"customerName,omitempty"`
-	CustomerAddress      string `json:"customerAddress,omitempty"`
-	CustomerNumber       string `json:"customerNumber,omitempty"`
-	TRID                 string `json:"trid,omitempty"`
-	Tag                  string `json:"tag,omitempty"`
-	CallbackURL          string `json:"callbackUrl,omitempty"`
-	CData                string `json:"cdata,omitempty"`
+	CollectOpts
 }
 
-// SubscriptionCfg drives the subscription top-up scenario. Both
-// ServiceNumber and CustomerNumber are declared at the block level because
-// discovery needs them; the same names from the collect block would
-// conflict, so collect-only customer fields stay below.
+// SubscriptionCfg drives the subscription top-up scenario.
+// ServiceNumber and CustomerNumber are discovery parameters at the
+// block level, used in addition to (or in lieu of) one another — so
+// this block can't embed CollectOpts and instead spells out the
+// collect opt-in fields directly (minus ServiceNumber/CustomerNumber).
 type SubscriptionCfg struct {
 	Merchant       string `json:"merchant"`
 	ServiceID      int64  `json:"serviceId"`
@@ -147,7 +120,7 @@ type SubscriptionCfg struct {
 	CustomerNumber string `json:"customerNumber,omitempty"`
 	Amount         int    `json:"amount,omitempty"`
 
-	// Collect opt-in fields (ServiceNumber + CustomerNumber declared above).
+	// Collect opt-in fields (mirror CollectOpts, minus ServiceNumber/CustomerNumber).
 	Collect              bool   `json:"collect,omitempty"`
 	CustomerPhoneNumber  string `json:"customerPhonenumber,omitempty"`
 	CustomerEmailAddress string `json:"customerEmailaddress,omitempty"`
@@ -164,19 +137,7 @@ type SubscriptionCfg struct {
 type CashinCfg struct {
 	ServiceID int64 `json:"serviceId"`
 	Amount    int   `json:"amount"`
-
-	// Collect opt-in fields.
-	Collect              bool   `json:"collect,omitempty"`
-	CustomerPhoneNumber  string `json:"customerPhonenumber,omitempty"`
-	CustomerEmailAddress string `json:"customerEmailaddress,omitempty"`
-	ServiceNumber        string `json:"serviceNumber,omitempty"`
-	CustomerName         string `json:"customerName,omitempty"`
-	CustomerAddress      string `json:"customerAddress,omitempty"`
-	CustomerNumber       string `json:"customerNumber,omitempty"`
-	TRID                 string `json:"trid,omitempty"`
-	Tag                  string `json:"tag,omitempty"`
-	CallbackURL          string `json:"callbackUrl,omitempty"`
-	CData                string `json:"cdata,omitempty"`
+	CollectOpts
 }
 
 // VerifyCfg drives the pre-payment serviceNumber verification scenario.
