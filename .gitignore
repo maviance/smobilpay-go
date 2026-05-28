@@ -27,6 +27,8 @@ go.work.sum
 # Build output
 /build/
 /coverage.html
+# Smoketest binary produced by `make smoketest` / `go build ./cmd/smoketest`
+/smoketest
 
 # Local smoke-test credentials (example file is committed; real config is not).
 /smoke-test.json
