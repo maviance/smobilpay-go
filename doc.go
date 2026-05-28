@@ -37,5 +37,5 @@
 // # Onboarding
 //
 // Base URL, partner credentials, and the full error catalog are issued by
-// Maviance support during partner onboarding — contact support@smobilpay.com.
+// your partner support representative during onboarding.
 package smobilpay

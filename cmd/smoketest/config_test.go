@@ -80,7 +80,7 @@ func TestSmokeConfig_parsesCollectOpts(t *testing.T) {
 	    "amount": 1000,
 	    "collect": true,
 	    "customerPhonenumber": "699999999",
-	    "customerEmailaddress": "acceptance@maviance.test",
+	    "customerEmailaddress": "acceptance@example.test",
 	    "serviceNumber": "699999999"
 	  }
 	}`
@@ -103,8 +103,8 @@ func TestSmokeConfig_parsesCollectOpts(t *testing.T) {
 	if cfg.Cashin.CustomerPhoneNumber != "699999999" {
 		t.Errorf("CustomerPhoneNumber = %q, want 699999999", cfg.Cashin.CustomerPhoneNumber)
 	}
-	if cfg.Cashin.CustomerEmailAddress != "acceptance@maviance.test" {
-		t.Errorf("CustomerEmailAddress = %q, want acceptance@maviance.test", cfg.Cashin.CustomerEmailAddress)
+	if cfg.Cashin.CustomerEmailAddress != "acceptance@example.test" {
+		t.Errorf("CustomerEmailAddress = %q, want acceptance@example.test", cfg.Cashin.CustomerEmailAddress)
 	}
 	if cfg.Cashin.ServiceNumber != "699999999" {
 		t.Errorf("ServiceNumber = %q, want 699999999", cfg.Cashin.ServiceNumber)

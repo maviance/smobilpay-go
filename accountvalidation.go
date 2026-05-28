@@ -61,8 +61,8 @@ func (a *AccountValidationAPI) VerifyServiceNumber(ctx context.Context, merchant
 // name, when available (GET /v2/validate).
 //
 // This is a restricted endpoint — access is granted only to partners
-// who have cleared Maviance's internal validation and compliance review.
-// Unauthorized callers receive HTTP 401 as an *APIError.
+// who have cleared the API operator's internal validation and compliance
+// review. Unauthorized callers receive HTTP 401 as an *APIError.
 //
 // Note: the partner OpenAPI spec uses the query parameter name
 // `serviceId` (camelCase) for /v2/validate, distinct from the lowercase

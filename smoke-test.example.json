@@ -8,7 +8,7 @@
     "amount": 1000,
     "collect": true,
     "customerPhonenumber": "699999999",
-    "customerEmailaddress": "acceptance@maviance.test",
+    "customerEmailaddress": "acceptance@example.test",
     "serviceNumber": "699999999"
   },
 

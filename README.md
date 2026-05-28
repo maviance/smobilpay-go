@@ -28,7 +28,7 @@ services, and drive a payment UI from the static catalog.
 ## Requirements
 
 - **Go 1.22 or newer** at runtime and at build time.
-- Network access to the base URL issued by Maviance support.
+- Network access to the partner base URL issued during onboarding.
 - An OAuth 2.0 credential pair (`publicKey` / `secretKey`) issued during
   partner onboarding.
 
@@ -567,9 +567,9 @@ per-request deadlines; the value passed to `WithRequestTimeout` is
 ## Onboarding
 
 Base URL, partner credentials (`publicKey` / `secretKey`), callback URL
-registration, and the full error catalog are issued by Maviance support
-during partner onboarding. They are intentionally not published in the
-spec or this README. Contact **support@smobilpay.com**.
+registration, and the full error catalog are issued during partner
+onboarding. They are intentionally not published in the spec or this
+README. Contact your partner support representative for access.
 
 ## Development
 
