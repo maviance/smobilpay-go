@@ -9,6 +9,12 @@
 // /v2/collectstd, then polls /v2/verifytx after a short settle. This
 // matches the nodejs sample's collect opt-in pattern so the same
 // smoke-test.json file drives the Java, Node, and Go runners.
+//
+// Each successful API response is rendered via dumpAll, which uses
+// reflection to print every exported field of every decoded struct.
+// That makes the smoke test double as a contract probe: if the server
+// adds a field or the decoders go wrong, an operator reading the log
+// can see it immediately instead of having to grep the JSON wire body.
 package main
 
 import (
@@ -17,7 +23,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	smob "github.com/maviance/smobilpay-go"
@@ -125,6 +133,207 @@ func printAPIErrorDetail(err error) {
 // detail prints a single indented detail line under a RUN/PASS banner.
 func detail(line string) { fmt.Println("     " + line) }
 
+// --- Field-by-field response dumper ----------------------------------
+//
+// dumpAll prints every exported field of v under label, recursing into
+// nested structs and slices. It exists so the smoke test renders every
+// decoded response field — letting the operator confirm the wire-to-Go
+// translation works end-to-end and spot fields that silently arrived
+// as nil/zero because a decoder regressed.
+//
+// Embedded structs (e.g. paymentItemBase) are flattened so the output
+// looks like the JSON wire shape, not the Go type layout. JSON tags
+// drive field names; fields without a json tag fall back to the Go
+// field name.
+//
+// time.Time-valued fields (including the smob.Date type, which embeds
+// time.Time) render in RFC3339 or "<zero>". Nil pointers render as
+// "<nil>"; non-nil pointers are dereferenced. Empty strings render as
+// `""` so they don't visually disappear.
+
+func dumpAll(label string, v any) {
+	fmt.Println("     " + label + ":")
+	dumpValue("       ", reflect.ValueOf(v))
+}
+
+func dumpValue(indent string, rv reflect.Value) {
+	if !rv.IsValid() {
+		fmt.Println(indent + "<invalid>")
+		return
+	}
+	if rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+	if rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			fmt.Println(indent + "<nil>")
+			return
+		}
+		rv = rv.Elem()
+	}
+	if t, ok := timeFromValue(rv); ok {
+		if t.IsZero() {
+			fmt.Println(indent + "<zero>")
+		} else {
+			fmt.Println(indent + t.Format(time.RFC3339))
+		}
+		return
+	}
+	switch rv.Kind() {
+	case reflect.Struct:
+		dumpStructFields(indent, rv)
+	case reflect.Slice, reflect.Array:
+		if rv.Len() == 0 {
+			fmt.Println(indent + "(empty)")
+			return
+		}
+		for i := 0; i < rv.Len(); i++ {
+			fmt.Printf("%s[%d]\n", indent, i)
+			dumpValue(indent+"  ", rv.Index(i))
+		}
+	case reflect.String:
+		s := rv.String()
+		if s == "" {
+			fmt.Println(indent + `""`)
+		} else {
+			fmt.Println(indent + s)
+		}
+	default:
+		fmt.Printf("%s%v\n", indent, rv.Interface())
+	}
+}
+
+func dumpStructFields(indent string, rv reflect.Value) {
+	rt := rv.Type()
+	for i := 0; i < rt.NumField(); i++ {
+		f := rt.Field(i)
+		fv := rv.Field(i)
+		// Flatten anonymous embedded structs (e.g. paymentItemBase) so
+		// the output mirrors the JSON wire shape rather than the Go
+		// type hierarchy. We do this BEFORE the IsExported check
+		// because paymentItemBase is an unexported type name, but
+		// reflection can still walk its promoted exported fields.
+		if f.Anonymous && fv.Kind() == reflect.Struct {
+			dumpStructFields(indent, fv)
+			continue
+		}
+		if !f.IsExported() {
+			continue
+		}
+		printField(indent, jsonFieldName(f), fv)
+	}
+}
+
+func jsonFieldName(f reflect.StructField) string {
+	tag := f.Tag.Get("json")
+	if tag == "" {
+		return f.Name
+	}
+	if i := strings.Index(tag, ","); i >= 0 {
+		tag = tag[:i]
+	}
+	if tag == "" || tag == "-" {
+		return f.Name
+	}
+	return tag
+}
+
+func printField(indent, name string, fv reflect.Value) {
+	label := name + ":"
+	if fv.Kind() == reflect.Ptr {
+		if fv.IsNil() {
+			fmt.Printf("%s%s <nil>\n", indent, label)
+			return
+		}
+		fv = fv.Elem()
+	}
+	if t, ok := timeFromValue(fv); ok {
+		if t.IsZero() {
+			fmt.Printf("%s%s <zero>\n", indent, label)
+		} else {
+			fmt.Printf("%s%s %s\n", indent, label, t.Format(time.RFC3339))
+		}
+		return
+	}
+	switch fv.Kind() {
+	case reflect.Struct:
+		fmt.Printf("%s%s\n", indent, label)
+		dumpStructFields(indent+"  ", fv)
+	case reflect.Slice, reflect.Array:
+		if fv.Len() == 0 {
+			fmt.Printf("%s%s (empty)\n", indent, label)
+			return
+		}
+		fmt.Printf("%s%s (%d items)\n", indent, label, fv.Len())
+		for i := 0; i < fv.Len(); i++ {
+			elem := fv.Index(i)
+			if elem.Kind() == reflect.Ptr {
+				if elem.IsNil() {
+					fmt.Printf("%s  [%d] <nil>\n", indent, i)
+					continue
+				}
+				elem = elem.Elem()
+			}
+			if elem.Kind() == reflect.Struct {
+				fmt.Printf("%s  [%d]\n", indent, i)
+				dumpStructFields(indent+"    ", elem)
+			} else {
+				fmt.Printf("%s  [%d] %v\n", indent, i, elem.Interface())
+			}
+		}
+	case reflect.String:
+		s := fv.String()
+		if s == "" {
+			fmt.Printf("%s%s \"\"\n", indent, label)
+		} else {
+			fmt.Printf("%s%s %s\n", indent, label, s)
+		}
+	case reflect.Bool:
+		fmt.Printf("%s%s %v\n", indent, label, fv.Bool())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		fmt.Printf("%s%s %d\n", indent, label, fv.Int())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		fmt.Printf("%s%s %d\n", indent, label, fv.Uint())
+	case reflect.Float32, reflect.Float64:
+		fmt.Printf("%s%s %g\n", indent, label, fv.Float())
+	default:
+		fmt.Printf("%s%s %v\n", indent, label, fv.Interface())
+	}
+}
+
+// timeFromValue extracts a time.Time from rv if rv is (or embeds)
+// time.Time. smob.Date embeds time.Time anonymously, so this matches
+// both — but only via *embedding*, not via any random field named Time,
+// otherwise structs like Ping (which has a Time field of type
+// time.Time) would collapse to just their timestamp.
+var timeType = reflect.TypeOf(time.Time{})
+
+func timeFromValue(rv reflect.Value) (time.Time, bool) {
+	if !rv.IsValid() || !rv.CanInterface() {
+		return time.Time{}, false
+	}
+	if t, ok := rv.Interface().(time.Time); ok {
+		return t, true
+	}
+	if rv.Kind() == reflect.Struct {
+		rt := rv.Type()
+		for i := 0; i < rt.NumField(); i++ {
+			f := rt.Field(i)
+			if !f.Anonymous || f.Type != timeType {
+				continue
+			}
+			fv := rv.Field(i)
+			if !fv.CanInterface() {
+				continue
+			}
+			if t, ok := fv.Interface().(time.Time); ok {
+				return t, true
+			}
+		}
+	}
+	return time.Time{}, false
+}
+
 // resolveAmount picks the amount to send to /v2/quotestd: caller-
 // supplied wins; otherwise we fall back to the catalog amount if the
 // item has a fixed price.
@@ -155,22 +364,12 @@ func generateTRID() string {
 // depending on opts.Collect — either calls collectAndReport or prints a
 // one-liner explaining how to opt in.
 func quoteAndReport(ctx context.Context, client *smob.Client, item smob.PaymentItem, amount int, opts collectOpts) error {
+	dumpAll("picked item", item)
 	q, err := client.Initiate.Quote(ctx, smob.QuoteRequest{Amount: amount, PayItemID: item.PayItemID()})
 	if err != nil {
 		return err
 	}
-	detail("quoteId:        " + q.QuoteID)
-	detail("expiresAt:      " + q.ExpiresAt.Format(time.RFC3339))
-	var pl, ps float64
-	if q.PriceLocalCur != nil {
-		pl = *q.PriceLocalCur
-	}
-	if q.PriceSystemCur != nil {
-		ps = *q.PriceSystemCur
-	}
-	detail(fmt.Sprintf("price (local):  %g %s", pl, q.LocalCur))
-	detail(fmt.Sprintf("price (system): %g %s", ps, q.SystemCur))
-	detail("promotion:      " + q.Promotion)
+	dumpAll("quote response", q)
 
 	if opts.Collect {
 		return collectAndReport(ctx, client, q, opts)
@@ -229,29 +428,7 @@ func collectAndReport(ctx context.Context, client *smob.Client, quote smob.Quote
 		return err
 	}
 
-	detail("ptn:             " + resp.PTN)
-	detail(fmt.Sprintf("status:          %s", resp.Status))
-	detail("receiptNumber:   " + resp.ReceiptNumber)
-	if resp.VeriCode != "" {
-		detail("veriCode:        " + resp.VeriCode)
-	}
-	var bal, pl, ps float64
-	if resp.AgentBalance != nil {
-		bal = *resp.AgentBalance
-	}
-	if resp.PriceLocalCur != nil {
-		pl = *resp.PriceLocalCur
-	}
-	if resp.PriceSystemCur != nil {
-		ps = *resp.PriceSystemCur
-	}
-	detail(fmt.Sprintf("agentBalance:    %g", bal))
-	detail(fmt.Sprintf("price (local):   %g %s", pl, resp.LocalCur))
-	detail(fmt.Sprintf("price (system):  %g %s", ps, resp.SystemCur))
-	detail("timestamp:       " + resp.Timestamp.Format(time.RFC3339))
-	if resp.PIN != "" {
-		detail("pin:             " + resp.PIN)
-	}
+	dumpAll("collection response", resp)
 
 	// Brief settle so the server has a moment to advance the row before
 	// we re-check via /v2/verifytx.
@@ -264,12 +441,10 @@ func collectAndReport(ctx context.Context, client *smob.Client, quote smob.Quote
 		detail("verifytx:        warning: " + err.Error())
 		return nil
 	}
-	if len(verifications) > 0 {
-		v := verifications[0]
-		detail(fmt.Sprintf("verifytx:        status=%s clearingDate=%s",
-			v.Status, v.ClearingDate.Format("2006-01-02")))
-	} else {
+	if len(verifications) == 0 {
 		detail("verifytx:        no rows yet (final status will land via callbackUrl or a later poll)")
+	} else {
+		dumpAll(fmt.Sprintf("verifytx response (%d rows)", len(verifications)), verifications)
 	}
 	return nil
 }
@@ -404,10 +579,7 @@ func (h *Harness) scenarioPing(ctx context.Context) error {
 	if p.Version == "" {
 		return errors.New("empty response")
 	}
-	detail("server time:    " + p.Time.Format(time.RFC3339))
-	detail("server version: " + p.Version)
-	detail("nonce echo:     " + p.Nonce)
-	detail("public key:     " + p.Key)
+	dumpAll("ping response", p)
 	return nil
 }
 
@@ -444,11 +616,7 @@ func (h *Harness) scenarioAccount(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	detail(fmt.Sprintf("agent:           %s (id=%s)", a.AgentName, a.AgentID))
-	detail("company:         " + a.CompanyName)
-	detail(fmt.Sprintf("balance:         %g %s", a.Balance, a.Currency))
-	detail(fmt.Sprintf("daily limit max: %g", a.LimitMax))
-	detail(fmt.Sprintf("limit remaining: %g", a.LimitRemaining))
+	dumpAll("account response", a)
 	return nil
 }
 
@@ -462,12 +630,11 @@ func (h *Harness) scenarioMerchants(ctx context.Context) error {
 	if len(ms) < sample {
 		sample = len(ms)
 	}
-	for i := 0; i < sample; i++ {
-		detail(fmt.Sprintf("  - %s : %s (%s, %s)",
-			ms[i].Merchant, ms[i].Name, ms[i].Country, ms[i].Status))
+	if sample > 0 {
+		dumpAll(fmt.Sprintf("first %d merchants (full fields)", sample), ms[:sample])
 	}
 	if len(ms) > sample {
-		detail(fmt.Sprintf("  ...and %d more", len(ms)-sample))
+		detail(fmt.Sprintf("...and %d more (omitted from dump)", len(ms)-sample))
 	}
 	return nil
 }
@@ -492,6 +659,15 @@ func (h *Harness) scenarioServices(ctx context.Context) error {
 	for _, t := range types {
 		detail(fmt.Sprintf("  - %s: %d", t, byType[smob.ServiceType(t)]))
 	}
+
+	sample := 5
+	if len(ss) < sample {
+		sample = len(ss)
+	}
+	if sample > 0 {
+		dumpAll(fmt.Sprintf("first %d services (full fields)", sample), ss[:sample])
+	}
+
 	listOfType(ss, smob.ServiceTypeVoucher, "VOUCHER services")
 	listOfType(ss, smob.ServiceTypeSubscription, "SUBSCRIPTION services")
 	listVerifiable(ss)
@@ -543,12 +719,6 @@ func (h *Harness) scenarioCashout(ctx context.Context) error {
 		return fmt.Errorf("no cashout items for serviceId=%d", c.ServiceID)
 	}
 	item := items[0]
-	var amt float64
-	if item.AmountLocalCur() != nil {
-		amt = *item.AmountLocalCur()
-	}
-	detail(fmt.Sprintf("picked: %s (%s, %s, local=%g %s)",
-		item.PayItemID(), item.Name(), item.AmountType(), amt, item.LocalCur()))
 	amount, err := resolveAmount(&item, c.Amount)
 	if err != nil {
 		return err
@@ -573,8 +743,6 @@ func (h *Harness) scenarioBill(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	detail(fmt.Sprintf("picked: %s (%s, amount=%d %s, due=%s)",
-		bill.PayItemID(), bill.BillType, amount, bill.LocalCur(), bill.BillDueDate.Format("2006-01-02")))
 	return quoteAndReport(ctx, h.client, &bill, amount, billCollectOpts(c))
 }
 
@@ -591,12 +759,6 @@ func (h *Harness) scenarioTopup(ctx context.Context) error {
 		return fmt.Errorf("no topup items for serviceId=%d", c.ServiceID)
 	}
 	item := items[0]
-	var amt float64
-	if item.AmountLocalCur() != nil {
-		amt = *item.AmountLocalCur()
-	}
-	detail(fmt.Sprintf("picked: %s (%s, %s, local=%g %s)",
-		item.PayItemID(), item.Name(), item.AmountType(), amt, item.LocalCur()))
 	amount, err := resolveAmount(&item, c.Amount)
 	if err != nil {
 		return err
@@ -625,7 +787,6 @@ func (h *Harness) scenarioVoucher(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	detail(fmt.Sprintf("picked: %s (%s, %s)", item.PayItemID(), item.Name(), item.AmountType()))
 	return quoteAndReport(ctx, h.client, &item, amount, voucherCollectOpts(c))
 }
 
@@ -646,7 +807,6 @@ func (h *Harness) scenarioProduct(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	detail(fmt.Sprintf("picked: %s (%s, %s)", item.PayItemID(), item.Name(), item.AmountType()))
 	return quoteAndReport(ctx, h.client, &item, amount, productCollectOpts(c))
 }
 
@@ -671,8 +831,6 @@ func (h *Harness) scenarioSubscription(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	detail(fmt.Sprintf("picked: %s (%s, customer=%s, due=%s)",
-		sub.PayItemID(), sub.Name(), sub.CustomerName, sub.DueDate.Format("2006-01-02")))
 	return quoteAndReport(ctx, h.client, &sub, amount, subscriptionCollectOpts(c))
 }
 
@@ -689,12 +847,6 @@ func (h *Harness) scenarioCashin(ctx context.Context) error {
 		return fmt.Errorf("no cashin items for serviceId=%d", c.ServiceID)
 	}
 	item := items[0]
-	var amt float64
-	if item.AmountLocalCur() != nil {
-		amt = *item.AmountLocalCur()
-	}
-	detail(fmt.Sprintf("picked: %s (%s, %s, local=%g %s)",
-		item.PayItemID(), item.Name(), item.AmountType(), amt, item.LocalCur()))
 	amount, err := resolveAmount(&item, c.Amount)
 	if err != nil {
 		return err
@@ -733,9 +885,7 @@ func (h *Harness) scenarioValidateAccount(ctx context.Context) error {
 		}
 		return err
 	}
-	detail("destination: " + ca.Destination)
-	detail(fmt.Sprintf("status:      %s", ca.Status))
-	detail("name:        " + ca.Name)
+	dumpAll("customer account response", ca)
 	return nil
 }
 
@@ -752,14 +902,11 @@ func (h *Harness) scenarioHistoryLast7Days(ctx context.Context) error {
 	if len(rows) < sample {
 		sample = len(rows)
 	}
-	for i := 0; i < sample; i++ {
-		r := rows[i]
-		var price float64
-		if r.PriceLocalCur != nil {
-			price = *r.PriceLocalCur
-		}
-		detail(fmt.Sprintf("  - %s : %s, %g %s, trid=%s",
-			r.PTN, r.Status, price, r.LocalCur, r.TRID))
+	if sample > 0 {
+		dumpAll(fmt.Sprintf("history rows (first %d, full fields)", sample), rows[:sample])
+	}
+	if len(rows) > sample {
+		detail(fmt.Sprintf("...and %d more (omitted from dump)", len(rows)-sample))
 	}
 	return nil
 }
