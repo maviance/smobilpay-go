@@ -6,9 +6,7 @@
 // Each collection-style scenario discovers a catalog item and quotes by
 // default. When the matching config block sets `collect: true` (plus
 // customerPhonenumber + customerEmailaddress), the harness also calls
-// /v2/collectstd, then polls /v2/verifytx after a short settle. This
-// matches the nodejs sample's collect opt-in pattern so the same
-// smoke-test.json file drives the Java, Node, and Go runners.
+// /v2/collectstd, then polls /v2/verifytx after a short settle.
 //
 // Each successful API response is rendered via dumpAll, which uses
 // reflection to print every exported field of every decoded struct.

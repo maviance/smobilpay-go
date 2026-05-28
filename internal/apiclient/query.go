@@ -12,10 +12,9 @@ import (
 )
 
 // Query builds an ordered query string. nil values, empty strings, and
-// numeric zero values (int64, float64) are silently skipped — matching
-// the Java client's QueryParams.add behaviour — so callers can pass
-// optional parameters uniformly without nil-checking. Booleans are
-// always emitted as "true"/"false". time.Time is emitted as RFC 3339
+// numeric zero values (int64, float64) are silently skipped, so callers
+// can pass optional parameters uniformly without nil-checking. Booleans
+// are always emitted as "true"/"false". time.Time is emitted as RFC 3339
 // (with sub-second precision when present) in UTC; a zero time is
 // skipped. Unsupported value types cause Add to panic.
 //

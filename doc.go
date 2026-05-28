@@ -2,7 +2,7 @@
 //
 // The client covers every partner-facing endpoint a partner needs to move
 // money in and out, sell value-added services, and drive a payment UI from
-// the static catalog. Surface and semantics mirror the official Java client.
+// the static catalog.
 //
 // # Authentication
 //

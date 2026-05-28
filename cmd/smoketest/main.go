@@ -1,8 +1,7 @@
 // Package main — main.go is the entry point for the Smobilpay Go
 // smoke-test runner. It resolves the config file (CLI arg →
 // SMOBILPAY_SMOKE_CONFIG env → ./smoke-test.json), validates it, builds
-// a smobilpay.Client, and dispatches the 15 scenarios in the same order
-// as the Java and Node runners so their outputs diff cleanly.
+// a smobilpay.Client, and dispatches the 15 scenarios in turn.
 //
 // Exit codes:
 //

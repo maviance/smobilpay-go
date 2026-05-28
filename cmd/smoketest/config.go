@@ -1,15 +1,12 @@
 // Package main implements the Smobilpay Go smoke-test runner.
 //
-// The runner consumes a JSON config file whose schema is drop-in compatible
-// with the Java and Node.js clients' smoke-test.json — so a single config can
-// drive all three runners and let us diff their output.
+// The runner consumes a JSON config file describing one block per
+// scenario; see smoke-test.example.json for the canonical shape.
 package main
 
 import "errors"
 
-// SmokeConfig is the JSON schema for the smoke-test config file —
-// identical to the Java client's SmokeTestConfig and the Node.js client's
-// smoke-test.json so a single JSON file works for every runner.
+// SmokeConfig is the JSON schema for the smoke-test config file.
 //
 // Each per-flow pointer field is optional: set it to null (or omit it) to
 // skip that scenario. Collection-style flows can additionally opt into a
@@ -32,8 +29,7 @@ type SmokeConfig struct {
 	Verify       *VerifyCfg       `json:"verify,omitempty"`
 	// Validation drives the account-validation scenario. The Go field is named
 	// Validation (not Validate) to avoid a name clash with the Validate()
-	// method below; the JSON key remains "validate" so the schema stays
-	// drop-in compatible with the Java/Node configs.
+	// method below; the JSON key remains "validate".
 	Validation *ValidateCfg `json:"validate,omitempty"`
 }
 

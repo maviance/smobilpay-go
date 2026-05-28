@@ -603,8 +603,6 @@ make lint
 cp smoke-test.example.json smoke-test.json
 # edit smoke-test.json with baseUrl + credentials
 make smoketest
-# diff against Java client output (verifies cross-language parity):
-make smoketest-compare JAVA_DIR=../java
 ```
 
 ### Real /v2/collectstd via opt-in
