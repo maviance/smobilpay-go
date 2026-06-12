@@ -83,6 +83,40 @@ func TestOAuth2Manager_mints(t *testing.T) {
 	}
 }
 
+// TestOAuth2Manager_sendsConformantFormRequest pins the on-the-wire shape of
+// the mint request. RFC 6749 §4.4.2 requires application/x-www-form-urlencoded
+// with grant_type=client_credentials, and S3P's /oauth/token now rejects
+// anything else (MPAY-30022). A future refactor that drops the body or switches
+// to JSON must fail here, not in production.
+func TestOAuth2Manager_sendsConformantFormRequest(t *testing.T) {
+	var gotContentType, gotBody string
+	h := &oauthHandler{respond: func(w http.ResponseWriter, r *http.Request) {
+		gotContentType = r.Header.Get("Content-Type")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "jwt-1",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	m := newTestManager(t, srv.URL, time.Now)
+	if _, err := m.AccessToken(context.Background()); err != nil {
+		t.Fatalf("AccessToken: %v", err)
+	}
+
+	if gotContentType != "application/x-www-form-urlencoded" {
+		t.Errorf("Content-Type = %q, want application/x-www-form-urlencoded", gotContentType)
+	}
+	if gotBody != "grant_type=client_credentials" {
+		t.Errorf("request body = %q, want grant_type=client_credentials", gotBody)
+	}
+}
+
 func TestOAuth2Manager_caches(t *testing.T) {
 	h := &oauthHandler{respond: okTokenHandler("jwt-1", 3600)}
 	srv := httptest.NewServer(h)
