@@ -298,3 +298,116 @@ func TestNewTransport_defaultsHTTPClient(t *testing.T) {
 		t.Error("Tokens() did not return the manager passed to NewTransport")
 	}
 }
+
+// A 401 from a secured endpoint must trigger one forced token refresh and a
+// single retry; the retry must carry the freshly-minted bearer (MPAY-30042).
+func TestTransport_GET_refreshesAndRetriesOn401(t *testing.T) {
+	var tokenMints, pingCalls int
+	var retryAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == tokenPath {
+			tokenMints++
+			okTokenHandler(fmt.Sprintf("jwt-%d", tokenMints), 3600)(w, r)
+			return
+		}
+		pingCalls++
+		if pingCalls == 1 {
+			w.WriteHeader(401)
+			return
+		}
+		retryAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(pingDTO{Time: "t", Version: "3.0.0"})
+	}))
+	defer srv.Close()
+
+	tr := newTestTransport(t, srv.URL, srv.URL)
+	var out pingDTO
+	if err := tr.Get(context.Background(), "/v2/ping", apiclient.NewQuery(), &out); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if out.Version != "3.0.0" {
+		t.Errorf("version = %q", out.Version)
+	}
+	if pingCalls != 2 {
+		t.Errorf("pingCalls = %d, want 2 (one 401 + one retry)", pingCalls)
+	}
+	if tokenMints != 2 {
+		t.Errorf("tokenMints = %d, want 2 (initial + forced refresh)", tokenMints)
+	}
+	if retryAuth != "Bearer jwt-2" {
+		t.Errorf("retry Authorization = %q, want Bearer jwt-2", retryAuth)
+	}
+}
+
+// The retry is bounded to one attempt: a still-401 response surfaces as
+// *APIError after exactly one retry (MPAY-30042).
+func TestTransport_GET_persistent401SurfacesAfterOneRetry(t *testing.T) {
+	var pingCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == tokenPath {
+			okTokenHandler("jwt-X", 3600)(w, r)
+			return
+		}
+		pingCalls++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(401)
+		_, _ = io.WriteString(w, `{"respCode":41004,"devMsg":"unauthorized"}`)
+	}))
+	defer srv.Close()
+
+	tr := newTestTransport(t, srv.URL, srv.URL)
+	var out pingDTO
+	err := tr.Get(context.Background(), "/v2/ping", apiclient.NewQuery(), &out)
+	var ae *apiclient.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *APIError, got %v (%T)", err, err)
+	}
+	if ae.HTTPStatus != 401 {
+		t.Errorf("HTTPStatus = %d, want 401", ae.HTTPStatus)
+	}
+	if pingCalls != 2 {
+		t.Errorf("pingCalls = %d, want 2 (one retry only)", pingCalls)
+	}
+}
+
+// A non-idempotent POST must be retried on 401 with the body resent (the
+// first attempt consumes the body reader) and the refreshed bearer.
+func TestTransport_POST_refreshesAndRetriesOn401(t *testing.T) {
+	var tokenMints, postCalls int
+	var retryBody, retryAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == tokenPath {
+			tokenMints++
+			okTokenHandler(fmt.Sprintf("jwt-%d", tokenMints), 3600)(w, r)
+			return
+		}
+		postCalls++
+		if postCalls == 1 {
+			w.WriteHeader(401)
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		retryBody = string(b)
+		retryAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"quoteId":"abc"}`)
+	}))
+	defer srv.Close()
+
+	tr := newTestTransport(t, srv.URL, srv.URL)
+	var out map[string]any
+	body := map[string]any{"amount": 500, "payItemId": "X"}
+	if err := tr.Post(context.Background(), "/v2/quotestd", body, &out); err != nil {
+		t.Fatalf("Post: %v", err)
+	}
+	if postCalls != 2 {
+		t.Errorf("postCalls = %d, want 2", postCalls)
+	}
+	if retryAuth != "Bearer jwt-2" {
+		t.Errorf("retry Authorization = %q, want Bearer jwt-2", retryAuth)
+	}
+	if retryBody != `{"amount":500,"payItemId":"X"}` {
+		t.Errorf("retry body = %q, body must be resent on retry", retryBody)
+	}
+}

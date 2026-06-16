@@ -40,32 +40,36 @@ func (t *Transport) Tokens() *OAuth2Manager { return t.tokens }
 // Get executes an authenticated GET and decodes the JSON response body
 // into out. Pass nil for out to discard the body.
 func (t *Transport) Get(ctx context.Context, path string, q *Query, out any) error {
-	req, err := t.newRequest(ctx, "GET", path, q, nil)
-	if err != nil {
-		return err
-	}
-	return t.do(req, out)
+	return t.do(ctx, func() (*http.Request, error) {
+		return t.newRequest(ctx, "GET", path, q, nil)
+	}, out)
 }
 
 // Post executes an authenticated POST with body serialized as JSON and
 // decodes the JSON response body into out.
 func (t *Transport) Post(ctx context.Context, path string, body any, out any) error {
-	var bodyReader io.Reader
+	var raw []byte
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return &TransportError{Op: "POST " + path, Cause: err}
 		}
-		bodyReader = bytes.NewReader(b)
+		raw = b
 	}
-	req, err := t.newRequest(ctx, "POST", path, nil, bodyReader)
-	if err != nil {
-		return err
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	return t.do(req, out)
+	return t.do(ctx, func() (*http.Request, error) {
+		var bodyReader io.Reader
+		if raw != nil {
+			bodyReader = bytes.NewReader(raw)
+		}
+		req, err := t.newRequest(ctx, "POST", path, nil, bodyReader)
+		if err != nil {
+			return nil, err
+		}
+		if raw != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		return req, nil
+	}, out)
 }
 
 func (t *Transport) newRequest(ctx context.Context, method, path string, q *Query, body io.Reader) (*http.Request, error) {
@@ -91,18 +95,37 @@ func (t *Transport) newRequest(ctx context.Context, method, path string, q *Quer
 	return req, nil
 }
 
-func (t *Transport) do(req *http.Request, out any) error {
-	op := req.Method + " " + req.URL.Path
-	resp, err := t.httpClient.Do(req)
+// do executes a request produced by build, retrying once on a 401 after
+// forcing a token refresh. build is a thunk because the retry needs a fresh
+// *http.Request: the first attempt consumes the body reader, and the retry
+// must carry the refreshed bearer. A 401 is rejected at the auth layer before
+// any business logic runs, so retrying is safe even for non-idempotent POSTs.
+// The retry is bounded to one attempt; a persistent 401 (e.g. a restricted
+// endpoint) falls through to decodeAPIError.
+func (t *Transport) do(ctx context.Context, build func() (*http.Request, error), out any) error {
+	req, err := build()
 	if err != nil {
-		return &TransportError{Op: op, Cause: err}
+		return err
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	resp, body, err := t.send(req)
 	if err != nil {
-		return &TransportError{Op: op, Cause: fmt.Errorf("read response body: %w", err)}
+		return err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		if _, rerr := t.tokens.Refresh(ctx); rerr != nil {
+			return rerr
+		}
+		req, err = build()
+		if err != nil {
+			return err
+		}
+		resp, body, err = t.send(req)
+		if err != nil {
+			return err
+		}
 	}
 
+	op := req.Method + " " + req.URL.Path
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return decodeAPIError(resp.StatusCode, body)
 	}
@@ -113,6 +136,22 @@ func (t *Transport) do(req *http.Request, out any) error {
 		return &TransportError{Op: op, Cause: fmt.Errorf("decode response: %w", err)}
 	}
 	return nil
+}
+
+// send performs a single HTTP attempt and returns the response together with
+// its fully-read body. Transport-level failures become *TransportError.
+func (t *Transport) send(req *http.Request) (*http.Response, []byte, error) {
+	op := req.Method + " " + req.URL.Path
+	resp, err := t.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, &TransportError{Op: op, Cause: err}
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, &TransportError{Op: op, Cause: fmt.Errorf("read response body: %w", err)}
+	}
+	return resp, body, nil
 }
 
 func decodeAPIError(status int, body []byte) error {
