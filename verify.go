@@ -10,12 +10,17 @@ import (
 )
 
 // Ping is the response from GET /v2/ping — an authenticated round-trip
-// probe that echoes server time, version, request nonce, and the public
-// access key used to authenticate.
+// probe that echoes server time, version, and the public access key used
+// to authenticate.
+//
+// Nonce is a legacy HMAC artifact: the server echoes the request's
+// s3pAuth nonce here, so under OAuth2 (this client's only auth mode) it
+// is always empty. The field is retained because the partner API spec
+// marks nonce a required property of the ping response.
 type Ping struct {
 	Time    time.Time `json:"time"`
 	Version string    `json:"version"`
-	Nonce   string    `json:"nonce"`
+	Nonce   string    `json:"nonce"` // always "" under OAuth2; see Ping doc
 	Key     string    `json:"key"`
 }
 
